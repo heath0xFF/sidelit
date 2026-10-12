@@ -1,0 +1,14 @@
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/schemas/
+.firecrawl/
+.impeccable/
+.DS_Store
+*.log
+*.tsbuildinfo
+__pycache__/
+test-results/
+.env
+.env.*
+!.env.example

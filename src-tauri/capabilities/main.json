@@ -1,0 +1,6 @@
+{
+  "identifier": "main",
+  "description": "Only the main editor window may receive events.",
+  "windows": ["main"],
+  "permissions": ["core:event:default"]
+}

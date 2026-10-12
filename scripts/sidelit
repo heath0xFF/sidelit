@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+local_app="$root/src-tauri/target/release/bundle/macos/Sidelit.app/Contents/MacOS/sidelit"
+if [ -x "$local_app" ]; then
+  exec "$local_app" "$@"
+elif [ -x /Applications/Sidelit.app/Contents/MacOS/sidelit ]; then
+  exec /Applications/Sidelit.app/Contents/MacOS/sidelit "$@"
+else
+  printf '%s\n' 'Sidelit is not built or installed. Run pnpm tauri build first.' >&2
+  exit 1
+fi
