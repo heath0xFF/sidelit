@@ -4,6 +4,7 @@ mod menu;
 mod recovery;
 mod search;
 mod service;
+mod updates;
 
 use std::{
     env, fs,
@@ -69,15 +70,20 @@ fn main() {
             .prefix("sidelit-handoff-")
             .tempfile()
             .expect("create handoff receipt");
-        let child = Command::new(env::current_exe().unwrap())
-            .args(&args)
-            .arg(ACK_FLAG)
-            .arg(ack.path())
-            .env("SIDELIT_GUI", "1")
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn();
+        // Start the real bundle even when the CLI was reached through a PATH symlink.
+        let child = env::current_exe()
+            .and_then(fs::canonicalize)
+            .and_then(|executable| {
+                Command::new(executable)
+                    .args(&args)
+                    .arg(ACK_FLAG)
+                    .arg(ack.path())
+                    .env("SIDELIT_GUI", "1")
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .spawn()
+            });
         if let Err(error) = child {
             eprintln!("sidelit: {error}");
             std::process::exit(1);
@@ -108,7 +114,12 @@ fn main() {
             return;
         }
     };
+    // Relaunch without the original file path or its now-expired CLI handoff receipt.
+    let mut restart_env = tauri::Env::default();
+    restart_env.args_os.truncate(1);
     let builder = tauri::Builder::default()
+        .manage(restart_env)
+        .manage(updates::Updates::default())
         .manage(service::Service::default())
         .manage(recovery::Recovery::default())
         .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
@@ -125,6 +136,7 @@ fn main() {
             });
             acknowledge(ack.as_deref(), result);
         }))
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
@@ -145,7 +157,9 @@ fn main() {
             service::set_recovery,
             service::save_session,
             service::restore_session,
-            service::quit
+            service::quit,
+            updates::check_update,
+            updates::install_update
         ])
         .setup(move |app| {
             tauri::WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?

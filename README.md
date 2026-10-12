@@ -10,7 +10,7 @@ Tauri 2 uses the operating system's webview. There is **no Electron, bundled Nod
 
 **[Download the latest macOS release](https://github.com/heath0xFF/sidelit/releases/latest)**
 
-1. Download the `.dmg` under **Assets**, not the source-code archive. This is a private repository; sign in to GitHub with an account that has access.
+1. Download the `.dmg` under **Assets**, not the source-code archive. Downloads are public; no GitHub account is needed.
 2. Open the DMG and drag **Sidelit** into **Applications**.
 3. Eject the disk image, then open Sidelit from Applications.
 
@@ -18,7 +18,11 @@ No Node, pnpm, Rust, or terminal command is needed. The universal app includes A
 
 Current releases are **ad-hoc signed, not Apple-notarized**. If macOS blocks the first launch, use **System Settings → Privacy & Security → Open Anyway** for Sidelit, only if you trust this download. Do not disable Gatekeeper.
 
-To update, save your work and quit Sidelit, then replace the app with the new version. Your Markdown files and recovery data stay separate from the app. Updates are manual for now.
+**Upgrading from 0.1.0:** install the new DMG once. Save your work and quit Sidelit before replacing it.
+
+From **0.1.1**, Sidelit checks for updates on startup and once a day while open. Use **Install & Restart** when an update is offered, or **Actions → Check for Updates**. Installation uses the normal Save/Discard/Cancel prompts, checks live drafts, and flushes enabled recovery before it starts. Failed updates keep drafts in memory. Nothing installs or restarts without your confirmation.
+
+Update archives must have a valid signature from Sidelit's release key, bound to the advertised version. Checks and downloads use HTTPS. Only update requests contact GitHub; they do not send document text or paths. Offline editing still works, and failed background checks stay quiet. Your Markdown files remain separate from the app. Turn on Session & Recovery if you want to restore tabs after a restart.
 
 For maintainers, [RELEASING.md](RELEASING.md) explains the GitHub build and release workflow.
 
@@ -58,7 +62,7 @@ The native Apple Silicon build is here:
 
 ```text
 src-tauri/target/release/bundle/macos/Sidelit.app
-src-tauri/target/release/bundle/dmg/Sidelit_0.1.0_aarch64.dmg
+src-tauri/target/release/bundle/dmg/Sidelit_0.1.1_aarch64.dmg
 ```
 
 The DMG filename includes the app version and target architecture.
@@ -98,6 +102,19 @@ Relative paths use the caller's working directory. Each call accepts one path. U
 
 The Rust executable validates the request, launches a detached GUI process when needed, and waits for a handoff receipt (up to 15 seconds). It returns after the running instance has queued the request, not when that window closes. Repeated calls focus the existing tab. Launch Services file-open events also enter the same queue.
 
+### Agent skill
+
+[`skills/sidelit/SKILL.md`](skills/sidelit/SKILL.md) tells agents how to open documents for review, write supported Markdown, and work safely beside unsaved human drafts. It uses the standard Agent Skills format and needs no extra runtime.
+
+From this checkout, install it in the shared skill directory:
+
+```sh
+mkdir -p "$HOME/.agents/skills"
+ln -s "$PWD/skills/sidelit" "$HOME/.agents/skills/sidelit"
+```
+
+Do not replace an existing skill without checking it. Agents that use a separate skills directory can link the same folder there. Restart the agent or reload its skills; in Pi, use `/reload`, then `/skill:sidelit`.
+
 ### Linux
 
 The code uses portable Rust filesystem and notify APIs. Install Tauri's current [Linux prerequisites](https://v2.tauri.app/start/prerequisites/#linux), including WebKitGTK 4.1, GTK 3, a C toolchain, and librsvg. Run `pnpm desktop`, or package with `pnpm tauri build --bundles deb,appimage` instead of the macOS `app,dmg` targets. Linux builds and desktop integration have **not** been verified in this first version.
@@ -110,9 +127,10 @@ The code uses portable Rust filesystem and notify APIs. Install Tauri's current 
 - Click a file in the sidebar. Folders expand on demand. `.git`, `node_modules`, `target`, `dist`, `build`, `.next`, and `.cache` are excluded.
 - Resize the sidebar by dragging its edge, or focus the edge and press the arrow keys. The toolbar button collapses it.
 - Tabs keep their unsaved drafts. A dot marks an unsaved change.
-- **Rendered** is an editable Crepe document, not a preview. It supports CommonMark/GFM headings, lists, tasks, tables, quotes, links, images, and code.
+- **Rendered** is an editable Crepe document, not a preview. It supports CommonMark/GFM headings, lists, tasks, tables, quotes, links, images, and code. Its text uses 80% of the editor pane, with at least 32px of space on each side in narrow panes. There is no fixed maximum width.
 - **Source** is Monaco, with line numbers, wrapping, find/replace, and undo/redo. It loads only when Source or Compare first opens.
 - **Save** is explicit. Optional recovery writes a separate checkpoint, never an automatic save over your Markdown files.
+- **Check for Updates** is under Actions and the native Sidelit menu. An update offers **Install & Restart**; it never silently restarts an editor with a draft.
 - The theme selector offers **System**, **One Light**, and **One Dark**. System is the default and follows OS theme changes. An explicit choice is retained across launches.
 - Rendered text uses **IBM Plex Sans**. Source, inline code, code blocks, and Compare use **Inconsolata**. Both fonts are bundled locally, including IBM Plex Sans italics; no network or font installation is needed.
 - Use **A− / A+** to set document text size from 12–28px. Click the size value to reset to 16px. The setting is shared across editing modes and retained across launches; it does not change Markdown, undo history, or the shell's text size.
@@ -133,6 +151,7 @@ The code uses portable Rust filesystem and notify APIs. Install Tauri's current 
 | Cmd/Ctrl+0 | Reset document font size to 16px |
 | Cmd/Ctrl+B / I | Bold / italic in rendered text |
 | Cmd/Ctrl+Z | Undo in the current editor |
+| Cmd/Ctrl+Shift+Z | Redo in the current editor |
 | Cmd/Ctrl+F | Find in Source |
 | Cmd+Option+F / Ctrl+H | Replace in Source |
 
@@ -143,7 +162,7 @@ One sidebar workspace is active at a time. Opening the first file uses its paren
 Each open file has one Markdown buffer, a disk snapshot and SHA-256 hash, a revision, and an optional pending external version.
 
 - Opening, focusing, changing tabs or modes, and no-op Save do not rewrite a file. Crepe does not serialize its initial document into the buffer.
-- A real rich edit can normalize supported syntax: list markers, whitespace, tables, or fences. **Arbitrary Markdown round trips are not byte-perfect.** Use Source for exact syntax control.
+- A real rich edit can normalize supported syntax: list markers, whitespace, tables, or fences. **Arbitrary Markdown round trips are not byte-perfect.** Use Source for exact syntax control. Undoing back to the loaded rendered document restores its original Markdown bytes.
 - YAML (`---`) and TOML (`+++`) frontmatter stays byte-for-byte unchanged while you edit the rendered body. Use Source to edit metadata. Unclosed frontmatter, raw HTML, reference syntax, math, Mermaid, code metadata, and recognized extensions use Source with an explanation. The conservative gate can also route ordinary dollar signs or large documents to Source. Source stays selected until you explicitly change mode.
 - UTF-8 and uniform LF/CRLF are supported. Rich edits preserve uniform CRLF. Mixed line endings can normalize after an edit.
 - A clean buffer refreshes after an external change. **Review changes** shows its previous disk version beside the current text, both read-only. Only the latest previous version is kept in memory.
@@ -177,7 +196,7 @@ Raw HTML and MDX are never executed. HTML documents use Source; rich paste is re
 
 ## Architecture
 
-- **Rust:** `files.rs` handles bounded reads and atomic saves. `service.rs` owns grants, open-file watches, native dialogs, images, and the request queue. `search.rs` bounds workspace search; `recovery.rs` validates and stores private checkpoints. `cli.rs` parses requests. `main.rs` registers single-instance first and handles lifecycle/native events.
+- **Rust:** `updates.rs` checks signed releases and installs only the offered version after frontend close approval. `files.rs` handles bounded reads and atomic saves. `service.rs` owns grants, open-file watches, native dialogs, images, and the request queue. `search.rs` bounds workspace search; `recovery.rs` validates and stores private checkpoints. `cli.rs` parses requests. `main.rs` registers single-instance first and handles lifecycle/native events.
 - **React:** `documents.ts` is the authoritative buffer state. It rejects stale reads and keeps save acknowledgments separate from current edits. `closing.ts` checks live revisions; `recovery.ts` coalesces checkpoint writes. `App.tsx` connects these to tabs, navigation, and conflict actions. Markdown safety parsing runs when entering Rendered, not on routine application renders or Source typing.
 - **Editors:** `Rich.tsx` publishes synchronous document transactions. `Source.tsx` owns stable file-URI Monaco models and local worker setup. Models/listeners are released when tabs close. Both retain cursor/scroll state where practical.
 
@@ -203,6 +222,8 @@ SIDELIT_TEST_BINARY="$PWD/src-tauri/target/release/bundle/macos/Sidelit Feature 
 
 The optional `tauri-plugin-wdio-webdriver` is current Tauri-supported desktop tooling. The Python script uses its W3C endpoints directly; it needs no browser or Node runtime. It creates temporary files and writes captures/results to ignored `test-results/`. New/Save As selection and restore approval use simulated replies in this script; Rust creation and recovery primitives have separate tests. Full native OS dialog interaction remains a manual check.
 
+`python3 scripts/updater-smoke.py` builds two isolated app versions with a disposable signing key and local feed. It checks corrupt archives, version substitution, cancelled/failed installs, real bundle replacement, and restart after the original CLI file was deleted. It does not touch your ordinary Sidelit bundle. Public update artifacts use a separate release key and HTTPS; see `RELEASING.md`.
+
 **Never distribute a `desktop-test` build.** That feature exposes a local test server. Quit it, then run `pnpm tauri build` without the feature for an ordinary release.
 
 ### Manual smoke test
@@ -219,7 +240,7 @@ The optional `tauri-plugin-wdio-webdriver` is current Tauri-supported desktop to
 
 ## Known limits and next steps
 
-- Undo history is editor-local: rich history resets on tab/mode remount; Monaco retains its model history until a rich edit or disk reload resets that model. There is no cross-mode undo contract or recovered undo history.
+- Undo/Redo use the current editor's own history, including rendered code blocks and the editable Compare pane. The native Edit menu and keyboard shortcuts use the same route. Search fields keep their own text history; read-only comparison panes cannot undo the draft. History is editor-local: rich history resets on tab/mode remount, and a disk reload clears either editor's history. Monaco retains its model history until a rich edit or disk reload resets it. There is no cross-mode undo contract or recovered undo history.
 - Files and local images are limited to 16 MiB. Large documents use Source. Quick Open is limited to 200 matches, 50,000 entries, depth 64, and a two-second traversal budget. Hard links are not deduplicated. Atomic replacement preserves basic permissions, not all extended metadata or hard-link relationships.
 - No image upload manager, remote images, raw HTML preview, or math/Mermaid rendering. Same-file anchor scrolling is not implemented. Workspace restoration requires recovery to be enabled.
 - macOS signing/notarization, Linux packaging, screen-reader use, narrow-window layouts, and native dialog edge cases need more coverage.

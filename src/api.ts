@@ -43,7 +43,12 @@ export interface SearchResults {
 export type SaveResult =
   | { kind: "saved"; snapshot: Snapshot }
   | { kind: "conflict"; snapshot: Snapshot | null; error: string | null };
+export interface AvailableUpdate {
+  version: string;
+}
 export const api = {
+  checkUpdate: () => invoke<AvailableUpdate | null>("check_update"),
+  installUpdate: (version: string) => invoke<void>("install_update", { version }),
   ready: () => invoke<OpenRequest[]>("ready"),
   choose: (folder: boolean) => invoke<void>("choose", { folder }),
   open: (path: string) => invoke<Opened>("open_document", { path }),

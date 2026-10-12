@@ -457,9 +457,9 @@ textarea {
   min-height: 100%;
 }
 .milkdown .ProseMirror {
-  max-width: 790px;
+  max-width: none;
   min-height: 100%;
-  padding: 54px 56px 120px;
+  padding: 54px max(32px, 10%) 120px;
   margin: 0 auto;
   outline: none;
   font-size: var(--document-font-size);

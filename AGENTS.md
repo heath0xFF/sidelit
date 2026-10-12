@@ -13,7 +13,9 @@ Tauri 2 / Rust desktop app. React + TypeScript + Vite frontend. pnpm only. No El
 - `src/fidelity.ts`: frontmatter preservation and a conservative Source-only gate at Rendered entry.
 - `src/closing.ts`, `recovery.ts`: live close approvals and serialized, coalesced checkpoints.
 - `src/appearance.ts`: bounded font-size settings and System/One Light/One Dark preference resolution. `style.css` owns shared palette tokens; fonts and OFL notices are bundled offline.
-- `src/App.tsx`: tabs, workspace, tree, dialogs, keyboard actions.
+- `src/App.tsx`: tabs, workspace, tree, dialogs, keyboard actions. Route native Undo/Redo to the active editor, not WebKit's undo manager; disk reloads clear editor history.
+- `skills/sidelit/SKILL.md`: portable agent instructions for opening documents and safe external edits.
+- `src-tauri/src/updates.rs`: signed updater commands. `src-tauri/examples/update-manifest.rs` verifies release signatures and versions; `.github/workflows/release.yml` publishes installers and the update feed.
 
 ## Commands
 
@@ -25,7 +27,7 @@ Tauri 2 / Rust desktop app. React + TypeScript + Vite frontend. pnpm only. No El
 
 `cargo test --manifest-path src-tauri/Cargo.toml`
 
-`pnpm tauri build`
+`pnpm tauri build`; `python3 scripts/updater-smoke.py` for an isolated, signed install/restart test. See `RELEASING.md` for production update artifacts and key handling.
 
 Desktop checks: use the isolated `desktop-test` bundle command in `README.md`, then run `scripts/desktop-smoke.py` with `SIDELIT_TEST_BINARY` set to that bundle. The test kills and restarts its own app for recovery checks; do not put real work in that window. This checks packaged WKWebView, not a browser preview. Rebuild **without** the feature before distribution. See `VERIFICATION.md`.
 
@@ -43,4 +45,5 @@ Desktop checks: use the isolated `desktop-test` bundle command in `README.md`, t
 10. Appearance updates must not remount editors, replace models, or write Markdown. Keep list markers aligned at every supported font size.
 11. Close and Quit must revalidate live document revisions after awaits. Save Merged must use the explicitly reviewed disk hash, not the latest unseen version.
 12. Recovery is opt-in, bounded, private, and separate from originals. Restore requires native path approval. Discarded drafts must not re-enter the final checkpoint; disabling recovery waits for writes before deleting it.
-13. Keep both lockfiles. Use brief comments only where the reason is not clear from the code.
+13. Updates use the same live draft approvals as Quit. They replace only the running app bundle and accept no frontend target path or URL. Never install or restart silently, accept unsigned/version-mismatched updates, expose the private signing key, or sign a test build with it.
+14. Keep both lockfiles. Use brief comments only where the reason is not clear from the code.

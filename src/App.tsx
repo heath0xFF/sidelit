@@ -10,7 +10,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { api, type Entry, type Snapshot, type RecoveryStatus } from "./api";
+import { api, type Entry, type Snapshot, type RecoveryStatus, type AvailableUpdate } from "./api";
 import {
   DEFAULT_FONT_SIZE,
   MIN_FONT_SIZE,
@@ -27,6 +27,7 @@ import Dialog from "./Dialog";
 import QuickOpen from "./QuickOpen";
 import SessionDialog from "./SessionDialog";
 import Rich, { disposeRich } from "./Rich";
+import type { EditorHistory } from "./history";
 
 let sourceModule: typeof import("./Source") | undefined;
 const Source = lazy(async () => (sourceModule = await import("./Source")));
@@ -218,6 +219,11 @@ export default function App() {
   const initializedRef = useRef(false);
   const drainRef = useRef(() => {});
   const [locked, setLocked] = useState(false);
+  const [update, setUpdate] = useState<AvailableUpdate | null>(null);
+  const [updateNotice, setUpdateNotice] = useState("");
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const checkingUpdateRef = useRef(false);
+  const [installingUpdate, setInstallingUpdate] = useState(false);
   const [recovery, setRecovery] = useState<RecoveryStatus>({ enabled: false, available: false, savedAt: 0, count: 0, dirty: 0 });
   // The old theme key stored the resolved OS color, not an explicit preference.
   const [theme, setTheme] = useState(() =>
@@ -236,8 +242,32 @@ export default function App() {
   workspaceRef.current = workspace;
   const quitting = useRef(false);
   const modalBusy = useRef(false);
+  const history = useRef<EditorHistory | null>(null);
   const report = useCallback((e: unknown) => setError(String(e)), []);
   const journal = useMemo(() => new RecoveryWriter(api.storeSession, report), [report]);
+  const checkUpdates = useCallback(async (manual = false) => {
+    if (checkingUpdateRef.current || quitting.current || !initializedRef.current) return;
+    checkingUpdateRef.current = true;
+    setCheckingUpdate(true);
+    if (manual) setUpdateNotice("Checking for updates…");
+    try {
+      const available = await api.checkUpdate();
+      setUpdate(available);
+      if (available) setUpdateNotice(`Sidelit ${available.version} is available.`);
+      else setUpdateNotice(manual ? "Sidelit is up to date." : "");
+    } catch (e) {
+      if (manual) setUpdateNotice(`Could not check for updates: ${String(e)}`);
+    } finally {
+      checkingUpdateRef.current = false;
+      setCheckingUpdate(false);
+    }
+  }, []);
+  useEffect(() => {
+    if (!initialized) return;
+    void checkUpdates();
+    const timer = setInterval(() => void checkUpdates(), 24 * 60 * 60 * 1000);
+    return () => clearInterval(timer);
+  }, [initialized, checkUpdates]);
   const activeRef = useRef(active);
   activeRef.current = active;
   const doc = docs.find((d) => d.path === active);
@@ -401,7 +431,7 @@ export default function App() {
     } catch (e) { report(e); }
     finally { modalBusy.current = false; setLocked(false); }
   };
-  const quit = async () => {
+  const quit = async (updateVersion?: string) => {
     if (!initializedRef.current) { await api.quit(); return; }
     if (quitting.current || modalBusy.current) return;
     quitting.current = true;
@@ -419,13 +449,19 @@ export default function App() {
       if (!approvalsCurrent(documents, approvals, true)) throw new Error("The session changed during Quit. Try again.");
       await journal.flush(sessionSnapshot(documents, workspaceRef.current, activeRef.current, approvals));
       if (!approvalsCurrent(documents, approvals, true)) throw new Error("The session changed during Quit. Try again.");
-      await api.quit();
+      if (updateVersion) {
+        setInstallingUpdate(true);
+        await api.installUpdate(updateVersion);
+      } else await api.quit();
       exiting = true;
     } catch (e) { report(e); }
     finally {
-      quitting.current = false;
-      setLocked(false);
-      if (!exiting) journal.queue(sessionSnapshot(documents, workspaceRef.current, activeRef.current));
+      if (!exiting) {
+        quitting.current = false;
+        setLocked(false);
+        setInstallingUpdate(false);
+        journal.queue(sessionSnapshot(documents, workspaceRef.current, activeRef.current));
+      }
     }
   };
   const quitRef = useRef(quit);
@@ -433,11 +469,24 @@ export default function App() {
   const actionRef = useRef((action: string) => {});
   actionRef.current = (action) => {
     if (action === "quit") { void quit(); return; }
+    if (action === "undo" || action === "redo") {
+      if (locked || !initialized) return;
+      const focused = document.activeElement;
+      if (focused?.matches("input, textarea") && !focused.matches(".monaco-editor .inputarea")) {
+        // WebKit history is document-wide; a field must not undo another editor.
+        const fieldOnly = (event: Event) => { if (event.target !== focused) event.preventDefault(); };
+        document.addEventListener("beforeinput", fieldOnly, true);
+        try { document.execCommand(action); }
+        finally { document.removeEventListener("beforeinput", fieldOnly, true); }
+      } else if (!prompt && !quick && !sessionDialog) history.current?.(action);
+      return;
+    }
     if (prompt || quick || sessionDialog || locked || !initialized) return;
     if (action === "new") void newFile();
     if (action === "save-as") void copy(false);
     if (action === "quick") setQuick(true);
     if (action === "session") setSessionDialog(true);
+    if (action === "updates") void checkUpdates(true);
     if (action === "close" && doc) void close(doc);
     if (action === "save") void save();
     if (action === "open" || action === "folder")
@@ -515,6 +564,12 @@ export default function App() {
   };
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        e.stopPropagation();
+        actionRef.current(e.shiftKey ? "redo" : "undo");
+        return;
+      }
       if (!(e.metaKey || e.ctrlKey) || prompt || quick || sessionDialog || locked || !initialized) return;
       const k = e.key.toLowerCase();
       if (!e.altKey && ["+", "=", "-", "0"].includes(k)) {
@@ -581,6 +636,7 @@ export default function App() {
             <button onClick={() => setQuick(true)}>Quick Open… <kbd>⌘P</kbd></button>
             <button onClick={() => void api.choose(true).catch(report)}>Open Folder…</button>
             <button onClick={() => setSessionDialog(true)}>Session & Recovery…</button>
+            <button disabled={checkingUpdate} onClick={() => void checkUpdates(true)}>Check for Updates…</button>
           </div>
         </details>
         <div className="toolbar-title" title={doc?.path}>
@@ -758,6 +814,11 @@ export default function App() {
               ))}
             </nav>
           )}
+          {updateNotice && <section className="changes-banner" role="status">
+            <span>{updateNotice}</span>
+            {update && <button disabled={checkingUpdate} onClick={() => void quit(update.version)}>Install & Restart</button>}
+            <button onClick={() => setUpdateNotice("")}>Dismiss</button>
+          </section>}
           {error && (
             <div className="error-banner" role="alert">
               <span>{error}</span>
@@ -830,6 +891,7 @@ export default function App() {
                       dark={dark}
                       fontSize={size}
                       readOnly={comparison.kind === "review"}
+                      history={history}
                       onChange={(text) => documents.edit(doc.path, text)}
                     />
                   </Suspense>
@@ -846,6 +908,7 @@ export default function App() {
                     text={doc.text}
                     dark={dark}
                     fontSize={size}
+                    history={history}
                     onChange={(text) => documents.edit(doc.path, text)}
                   />
                 </Suspense>
@@ -856,6 +919,7 @@ export default function App() {
                   text={doc.text}
                   onChange={(text) => documents.edit(doc.path, text)}
                   onError={report}
+                  history={history}
                 />
               )}
               <footer className="statusbar">
@@ -911,6 +975,10 @@ export default function App() {
           )}
         </main>
       </div>
+      {installingUpdate && <Dialog title="Installing update" onClose={() => {}}>
+        <p role="status">Downloading, checking the signature, and installing. Sidelit will restart when finished.</p>
+        <p>Keep Sidelit open. The download can take up to two minutes. macOS may ask for permission to replace the app.</p>
+      </Dialog>}
       {quick && <QuickOpen workspace={workspace} open={open} close={() => setQuick(false)} />}
       {sessionDialog && <SessionDialog status={recovery} startup={!initialized} restore={restore}
         change={changeRecovery} close={() => setSessionDialog(false)} quit={api.quit} />}

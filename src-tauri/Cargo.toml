@@ -1,6 +1,6 @@
 [package]
 name = "sidelit"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 default-run = "sidelit"
 
@@ -21,7 +21,15 @@ base64 = "0.22"
 libc = "0.2"
 url = "2"
 tauri-plugin-wdio-webdriver = { version = "1.5", optional = true }
+tauri-plugin-updater = "2"
 
 [features]
 default = []
 desktop-test = ["dep:tauri-plugin-wdio-webdriver"]
+
+[dev-dependencies]
+minisign-verify = "0.3"
+
+[[example]]
+name = "update-manifest"
+test = true

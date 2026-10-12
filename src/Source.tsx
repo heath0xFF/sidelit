@@ -1,6 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useImperativeHandle, useRef, type Ref } from "react";
 import { api } from "./api";
 import { MONOSPACE_FONT } from "./appearance";
+import type { EditorHistory } from "./history";
 import * as monaco from "monaco-editor/editor/editor.api.js";
 import "monaco-editor/languages/definitions/markdown/register.js";
 import "monaco-editor/features/register.all.js";
@@ -68,6 +69,7 @@ export default function Source({
   fontSize,
   original,
   readOnly = false,
+  history,
 }: {
   path: string;
   text: string;
@@ -76,6 +78,7 @@ export default function Source({
   fontSize: number;
   original?: string;
   readOnly?: boolean;
+  history: Ref<EditorHistory>;
 }) {
   const root = useRef<HTMLDivElement>(null);
   const editor = useRef<
@@ -86,6 +89,14 @@ export default function Source({
   const callback = useRef(onChange);
   callback.current = onChange;
   const changing = useRef(false);
+  useImperativeHandle(history, () => (action) => {
+    const current = editor.current;
+    if (!current || readOnly) return;
+    if ("getOriginalEditor" in current && current.getOriginalEditor().hasTextFocus()) return;
+    const code = "getModifiedEditor" in current ? current.getModifiedEditor() : current;
+    code.focus();
+    code.trigger("sidelit", action, null);
+  }, [readOnly]);
   useEffect(() => {
     const uri = monaco.Uri.file(path);
     let model = models.get(path);

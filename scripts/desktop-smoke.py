@@ -14,6 +14,9 @@ import urllib.request
 
 ROOT = Path(__file__).resolve().parent.parent
 BINARY = Path(os.environ.get('SIDELIT_TEST_BINARY', ROOT / 'src-tauri/target/release/bundle/macos/Sidelit.app/Contents/MacOS/sidelit'))
+with (BINARY.parents[1] / 'Info.plist').open('rb') as info:
+    identifier = plistlib.load(info)['CFBundleIdentifier']
+assert identifier != 'app.sidelit.desktop', 'Set SIDELIT_TEST_BINARY to an isolated desktop-test bundle; this test kills its app.'
 BASE = 'http://127.0.0.1:4445'
 OUT = ROOT / 'test-results'
 OUT.mkdir(exist_ok=True)
@@ -65,6 +68,16 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     def js(script, *args):
         return request(f'/session/{session}/execute/sync', {'script': script, 'args': list(args)})
 
+    # Use the real Monaco transaction API without exporting test hooks in the app.
+    def source_editor():
+        return '''const el=document.querySelector('.source-editor');let f=el[Object.keys(el).find(k=>k.startsWith('__reactFiber$'))];let editor;for(;f&&!editor;f=f.return)for(let h=f.memoizedState;h;h=h.next)if(h.memoizedState?.current?.getModel){editor=h.memoizedState.current;break}if(!editor)throw new Error('Source editor not found');'''
+
+    def source_edit(text):
+        js(source_editor() + '''const code=editor.getModifiedEditor?.()||editor;code.pushUndoStop();code.executeEdits('desktop-test',[{range:code.getModel().getFullModelRange(),text:arguments[0]}]);code.pushUndoStop()''', text)
+
+    def source_text():
+        return js(source_editor() + 'return (editor.getModifiedEditor?.()||editor).getValue()')
+
     def click(text):
         assert js('const scope=document.querySelector("dialog[open]")||document;const b=[...scope.querySelectorAll("button")].find(b=>b.textContent.trim()===arguments[0]); if(b){b.click();return true} return false', text), text
 
@@ -80,8 +93,24 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     wait(lambda: js('return document.querySelector(".ProseMirror h1")?.textContent') == 'Original', 'rendered editor')
     ready_seconds = round(time.monotonic() - started, 3)
     def instrument():
-        js('window.__errors=[];window.__workers=[]; addEventListener("error",e=>__errors.push(e.message)); addEventListener("unhandledrejection",e=>__errors.push(String(e.reason)));addEventListener("securitypolicyviolation",e=>__errors.push("CSP: "+e.violatedDirective+" "+e.blockedURI)); const W=window.Worker;window.Worker=class extends W{constructor(...a){super(...a);__workers.push(String(a[0]));this.addEventListener("error",e=>__errors.push("worker: "+e.message));}}')
+        js('window.__errors=[];window.__workers=[]; addEventListener("error",e=>__errors.push(e.message)); addEventListener("unhandledrejection",e=>__errors.push(String(e.reason?.stack||e.reason)));addEventListener("securitypolicyviolation",e=>__errors.push("CSP: "+e.violatedDirective+" "+e.blockedURI)); const W=window.Worker;window.Worker=class extends W{constructor(...a){super(...a);__workers.push(String(a[0]));this.addEventListener("error",e=>__errors.push("worker: "+e.message));}}')
     instrument()
+
+    def history_action(action, menu=False):
+        if menu:
+            js('void window.__TAURI_INTERNALS__.invoke("plugin:event|emit",{event:"menu-action",payload:arguments[0]})', action)
+        else:
+            js('(document.activeElement||document.body).dispatchEvent(new KeyboardEvent("keydown",{key:"z",metaKey:true,shiftKey:arguments[0]==="redo",bubbles:true,cancelable:true}))', action)
+
+    def check_column():
+        metrics = js('const el=document.querySelector(".ProseMirror"),s=getComputedStyle(el);return {width:el.clientWidth,left:parseFloat(s.paddingLeft),right:parseFloat(s.paddingRight),cap:s.maxWidth}')
+        expected = max(32, metrics['width'] * .1)
+        assert metrics['cap'] == 'none' and abs(metrics['left'] - expected) < 1 and abs(metrics['right'] - expected) < 1, metrics
+
+    check_column()
+    js('document.querySelector(".rich-editor").style.width="300px"')
+    check_column()
+    js('document.querySelector(".rich-editor").style.removeProperty("width")')
     assert not js('return !!document.querySelector(".dirty-dot")')
     def set_theme(value):
         js('const select=document.querySelector("select[aria-label=Theme]");select.value=arguments[0];select.dispatchEvent(new Event("change",{bubbles:true}))', value)
@@ -135,6 +164,28 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     # A real contenteditable input transaction must update the shared buffer synchronously.
     js('const el=document.querySelector(".ProseMirror p");el.focus();const r=document.createRange();r.selectNodeContents(el);const s=getSelection();s.removeAllRanges();s.addRange(r);document.execCommand("insertText",false,"Edited in WKWebView.")')
     wait(lambda: js('return !!document.querySelector(".dirty-dot")'), 'rich edit')
+    history_action('undo')
+    wait(lambda: 'A paragraph to edit.' in body() and not js('return !!document.querySelector(".tab.active .dirty-dot")'), 'rich keyboard undo')
+    history_action('redo')
+    wait(lambda: 'Edited in WKWebView.' in body(), 'rich keyboard redo')
+    history_action('undo', menu=True)
+    wait(lambda: 'A paragraph to edit.' in body(), 'rich menu undo')
+    history_action('redo', menu=True)
+    wait(lambda: 'Edited in WKWebView.' in body(), 'rich menu redo')
+    assert file.read_bytes() == before, 'history must not save to disk'
+    js('window.dispatchEvent(new KeyboardEvent("keydown",{key:"p",metaKey:true,bubbles:true,cancelable:true}))')
+    wait(lambda: js('return !!document.querySelector(".quick-open input")'), 'history in search field')
+    history_action('undo', menu=True)
+    time.sleep(.1)
+    assert 'Edited in WKWebView.' in body(), 'an empty search undo must not edit the document'
+    js('document.querySelector(".quick-open input").focus();document.execCommand("insertText",false,"search undo")')
+    wait(lambda: js('return document.querySelector(".quick-open input").value') == 'search undo', 'search input')
+    history_action('undo', menu=True)
+    wait(lambda: js('return document.querySelector(".quick-open input").value') == '', 'search field undo')
+    history_action('redo')
+    wait(lambda: js('return document.querySelector(".quick-open input").value') == 'search undo', 'search field redo')
+    assert 'Edited in WKWebView.' in body(), 'search history must not edit the document'
+    click('Close')
     launch('Welcome.md', cwd=folder)
     wait(lambda: 'A quieter place to think' in body(), 'second tab')
     launch(file)
@@ -151,12 +202,36 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     request(f'/session/{session}/element/{element_id}/click', {})
     request(f'/session/{session}/element/{element_id}/value', {'text': 'SOURCE ', 'value': list('SOURCE ')})
     wait(lambda: js('return !!document.querySelector(".dirty-dot")'), 'source input')
+    typed = source_text()
+    history_action('undo')
+    wait(lambda: source_text() != typed, 'source keyboard undo')
+    undone = source_text()
+    history_action('redo')
+    wait(lambda: source_text() == typed, 'source keyboard redo')
+    history_action('undo', menu=True)
+    wait(lambda: source_text() == undone, 'source menu undo')
+    history_action('redo', menu=True)
+    wait(lambda: source_text() == typed, 'source menu redo')
+    assert b'SOURCE' not in file.read_bytes(), 'source history must not save to disk'
+    # Isolate field routing from Monaco Find's clipboard permission requests on synthetic clicks.
+    js('const field=document.createElement("textarea");field.id="history-field";field.setAttribute("aria-label","History field fixture");document.querySelector(".monaco-editor").append(field);field.focus();document.execCommand("insertText",false,"undo query")')
+    wait(lambda: js('return document.activeElement.value') == 'undo query', 'Source field input')
+    history_action('undo', menu=True)
+    wait(lambda: js('return document.activeElement.value') == '', 'Source field undo')
+    history_action('redo')
+    wait(lambda: js('return document.activeElement.value') == 'undo query', 'Source field redo')
+    assert source_text() == typed, 'field history must not edit the document'
+    js('document.querySelector("#history-field").remove()')
     click('Rendered')
     wait(lambda: 'SOURCE' in body(), 'source edit in rich editor')
     click('Save')
     wait(lambda: b'SOURCE' in file.read_bytes(), 'source save')
     file.write_text('# External refresh\n\nAgent text.\n')
     wait(lambda: js('return document.querySelector(".ProseMirror h1")?.textContent') == 'External refresh', 'clean watcher refresh')
+    history_action('undo', menu=True)
+    time.sleep(.15)
+    assert not js('return !!document.querySelector(".tab.active .dirty-dot")'), 'disk reload must reset rich history'
+    assert 'Agent text.' in body()
     js('const el=document.querySelector(".ProseMirror p");el.focus();const r=document.createRange();r.selectNodeContents(el);getSelection().removeAllRanges();getSelection().addRange(r);document.execCommand("insertText",false,"Unsaved draft")')
     wait(lambda: js('return !!document.querySelector(".dirty-dot")'), 'dirty buffer')
     file.write_text('# Conflict from disk\n\nExternal version.\n')
@@ -212,6 +287,16 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     wait(lambda: 'This is a sample document' in body(), 'restored sample')
     wait(lambda: js('return !!document.querySelector(".cm-content")'), 'fenced code editor')
     assert 'Inconsolata' in js('return getComputedStyle(document.querySelector(".cm-scroller")).fontFamily')
+    js('const el=document.querySelector(".cm-content");el.focus();const r=document.createRange();r.selectNodeContents(el);getSelection().removeAllRanges();getSelection().addRange(r);document.execCommand("insertText",false,"fn history_check() {}")')
+    wait(lambda: js('return !!document.querySelector(".tab.active .dirty-dot")'), 'code block edit')
+    history_action('undo', menu=True)
+    wait(lambda: 'println!' in js('return document.querySelector(".cm-content").textContent'), 'code block undo')
+    history_action('redo')
+    wait(lambda: 'history_check' in js('return document.querySelector(".cm-content").textContent'), 'code block redo')
+    history_action('undo')
+    wait(lambda: not js('return !!document.querySelector(".tab.active .dirty-dot")'), 'code undo restores clean buffer')
+    assert welcome.read_text() == original
+    check_column()
     screenshot('rendered.png')
     launch('Lists.md', cwd=folder)
     wait(lambda: 'Lists that stay in line' in body(), 'list fixture')
@@ -241,16 +326,6 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     click('Save')
     time.sleep(.4)
     assert fixture.read_bytes() == initial
-    # Use the real Monaco transaction API without exporting test hooks in the app.
-    def source_editor():
-        return '''const el=document.querySelector('.source-editor');let f=el[Object.keys(el).find(k=>k.startsWith('__reactFiber$'))];let editor;for(;f&&!editor;f=f.return)for(let h=f.memoizedState;h;h=h.next)if(h.memoizedState?.current?.getModel){editor=h.memoizedState.current;break}if(!editor)throw new Error('Source editor not found');'''
-
-    def source_edit(text):
-        js(source_editor() + '''const code=editor.getModifiedEditor?.()||editor;code.executeEdits('desktop-test',[{range:code.getModel().getFullModelRange(),text:arguments[0]}])''', text)
-
-    def source_text():
-        return js(source_editor() + 'return (editor.getModifiedEditor?.()||editor).getValue()')
-
     def rich_edit(text):
         wait(lambda: js('return !!document.querySelector(".ProseMirror p")'), 'editable paragraph')
         js('const el=document.querySelector(".ProseMirror p");el.focus();const r=document.createRange();r.selectNodeContents(el);getSelection().removeAllRanges();getSelection().addRange(r);document.execCommand("insertText",false,arguments[0])', text)
@@ -267,6 +342,11 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     time.sleep(.2)
     assert metadata.read_bytes() == untouched and metadata.stat().st_mtime_ns == stamp
     rich_edit('Edited body, unchanged metadata.')
+    history_action('undo')
+    wait(lambda: not js('return !!document.querySelector(".tab.active .dirty-dot")'), 'frontmatter undo restores exact text')
+    assert metadata.read_bytes() == untouched
+    history_action('redo', menu=True)
+    wait(lambda: 'Edited body, unchanged metadata.' in body(), 'frontmatter redo')
     click('Save')
     wait(lambda: b'Edited body' in metadata.read_bytes(), 'frontmatter body saved')
     assert metadata.read_bytes().startswith(prefix)
@@ -317,6 +397,14 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
         js('const arrows=document.querySelectorAll(".gutter .action-label.codicon-arrow-right");const button=arrows[arrows.length-1];button.focus();for(const type of ["keydown","keyup"])button.dispatchEvent(new KeyboardEvent(type,{key:arguments[0],keyCode:arguments[1],which:arguments[1],bubbles:true,cancelable:true}))', key, code)
     take_last_disk_change('Enter', 13)
     wait(lambda: 'Last disk.' in source_text(), 'selected disk change applied')
+    history_action('undo')
+    wait(lambda: 'Last base.' in source_text(), 'undo selected disk change')
+    history_action('redo', menu=True)
+    wait(lambda: 'Last disk.' in source_text(), 'redo selected disk change')
+    js(source_editor() + 'editor.getOriginalEditor().focus()')
+    history_action('undo')
+    time.sleep(.15)
+    assert 'Last disk.' in source_text(), 'Undo in the read-only disk pane must not edit the draft'
     assert 'First draft.' in source_text(), 'taking one disk change must keep the other draft edit'
     wait(lambda: js('return document.querySelectorAll(".gutter .action-label.codicon-arrow-right").length') == 1, 'remaining difference painted')
     set_theme('dark')
@@ -342,6 +430,11 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     click('Review changes')
     wait(lambda: js('return !!document.querySelector(".monaco-diff-editor")'), 'clean comparison')
     assert js(source_editor() + 'return editor.getModifiedEditor().getRawOptions().readOnly')
+    review_text = source_text()
+    history_action('undo', menu=True)
+    history_action('redo')
+    time.sleep(.15)
+    assert source_text() == review_text and not js('return !!document.querySelector(".tab.active .dirty-dot")'), 'review history is read only'
     wait(lambda: js(source_editor() + 'return (editor.getLineChanges()?.length ?? 0) > 0'), 'review differences computed')
     time.sleep(.15)
     screenshot('external-review.png')
@@ -395,8 +488,6 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     wait(lambda: js('return __recoveryStatus?.dirty') == 1, 'dirty draft checkpoint')
     errors_before_crash = js('return __errors')
     workers_before_crash = js('return __workers')
-    with (BINARY.parents[1] / 'Info.plist').open('rb') as info:
-        identifier = plistlib.load(info)['CFBundleIdentifier']
     checkpoint = Path.home() / 'Library/Application Support' / identifier / 'recovery/session.json'
     saved = json.loads(checkpoint.read_text())['session']
     assert any('Checkpointed draft.' in d['text'] for d in saved['documents'])
@@ -408,8 +499,9 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     merge.write_text('# Agent changed while closed\n\nDo not overwrite this.\n')
     launch()
     wait(lambda: request('/status')['ready'], 'restarted WebDriver')
+    time.sleep(.5)
     session = request('/session', {'capabilities': {}})['sessionId']
-    wait(lambda: 'Restore your last session?' in body(), 'restart recovery offer')
+    wait(lambda: 'Restore your last session?' in body(), 'restart recovery offer', timeout=30)
     instrument()
     screenshot('restore-session.png')
     # Native approval is simulated here; CLI grants still authorize every real file read.
@@ -433,7 +525,7 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     wait(lambda: not js('return !!document.querySelector(".tab.active .dirty-dot")'), 'checkpoint test discarded')
     errors = errors_before_crash + js('return __errors')
     assert errors == [], errors
-    report = {'handoffSeconds': timing, 'editorReadySeconds': ready_seconds, 'warmHandoffSeconds': warm, 'workers': workers_before_crash + js('return __workers'), 'errors': errors, 'checks': 'Crepe input; Monaco input; CRLF; no-op save; mode/tab switches; clean refresh; conflict/diff; discard/cancel; rename; delete/recreate; repeated CLI; Unicode/caller cwd; local image and alt fidelity; frontmatter; dirty close/quit cancel; save on close; task/numbered/nested/wrapped list alignment at 12–28px; local fonts; One themes; system preference; live sizing without editor remounts; opaque frontmatter rich editing; sticky Source; scoped Quick Open; background close selection; editable diff and keyboard change acceptance; stale merged-save rejection; clean change review; New/Save As UI (native selection simulated); Save As cancel/failure; recovery checkpoint, process crash, restart, conflict-safe restore (native approval simulated), and deletion'}
+    report = {'handoffSeconds': timing, 'editorReadySeconds': ready_seconds, 'warmHandoffSeconds': warm, 'workers': workers_before_crash + js('return __workers'), 'errors': errors, 'checks': 'Crepe input; Monaco input; 80% rendered column and narrow gutter; keyboard/menu undo and redo in both editors, code blocks, and search inputs; disk reload history reset; undo/redo disk adoption; read-only history guards; CRLF; no-op save; mode/tab switches; clean refresh; conflict/diff; discard/cancel; rename; delete/recreate; repeated CLI; Unicode/caller cwd; local image and alt fidelity; frontmatter; dirty close/quit cancel; save on close; task/numbered/nested/wrapped list alignment at 12–28px; local fonts; One themes; system preference; live sizing without editor remounts; opaque frontmatter rich editing; sticky Source; scoped Quick Open; background close selection; editable diff and keyboard change acceptance; stale merged-save rejection; clean change review; New/Save As UI (native selection simulated); Save As cancel/failure; recovery checkpoint, process crash, restart, conflict-safe restore (native approval simulated), and deletion'}
     (OUT / 'desktop.json').write_text(json.dumps(report, indent=2))
     print(json.dumps(report, indent=2))
     # Close only the temporary documents; the app remains available for manual checks.

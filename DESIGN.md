@@ -12,7 +12,7 @@ The old boolean theme setting was written automatically on launch. It is not tre
 
 System sans remains in the shell. Rendered writing uses IBM Plex Sans; source, Compare, inline code, and fenced code use Inconsolata. Variable WOFF2 files are bundled through Fontsource, including IBM Plex Sans italic faces, with SIL OFL notices in `public/licenses/`.
 
-UI labels stay at 12–13px. Document text defaults to 16px with 1.5 line height, and can be adjusted from 12–28px using A− / A+, the reset value, or Cmd/Ctrl+Plus, Minus, and 0. Headings, tables, code, and list markers scale with the setting. List marker boxes follow the first paragraph's line height plus its padding. The document column is at most 790px, including 56px side padding. Headings have more space above than below. Appearance changes must never remount either editor or change the document buffer.
+UI labels stay at 12–13px. Document text defaults to 16px with 1.5 line height, and can be adjusted from 12–28px using A− / A+, the reset value, or Cmd/Ctrl+Plus, Minus, and 0. Headings, tables, code, and list markers scale with the setting. List marker boxes follow the first paragraph's line height plus its padding. The rendered document has no fixed maximum width. Text uses 80% of the editor pane; each side keeps at least 32px for narrow panes and block controls. Headings have more space above than below. Appearance changes must never remount either editor or change the document buffer.
 
 The toolbar is 56px high, tabs 39px, and status bar 29px. The sidebar starts at 240px and supports pointer and keyboard resizing from 170–440px. The minimum window is 720×480.
 
@@ -24,7 +24,9 @@ A conflict uses a visible banner with Compare, Reload from Disk, and Save Copy. 
 
 The Actions disclosure keeps New File, Save As, Quick Open, and Session & Recovery out of the main writing controls. Quick Open uses a labelled combobox with keyboard selection, loading/error states, and a bounded results list. Recovery is off by default and states its retention, privacy, and data-loss limits before activation. The HTML `<dialog>` element contains modal focus and returns it to the previous control. Close and Quit use a focused three-choice confirmation and block competing UI actions while they validate live drafts.
 
-Use visible focus rings, restrained hover fills, and no decorative motion. Native menus supply desktop clipboard actions. No font or image CDN is required.
+Updates reuse the quiet changes banner, with Install & Restart and Dismiss. Manual checks are in Actions and the native Sidelit menu. Background checks do not open dialogs or report offline errors. Installation uses the existing save prompts, then a modal progress message while editing is locked. A failure returns to the draft with an error; no automatic restart is allowed without approval.
+
+Use visible focus rings, restrained hover fills, and no decorative motion. Native menus supply desktop clipboard actions. Edit → Undo/Redo and Cmd/Ctrl+Z / Cmd/Ctrl+Shift+Z use the active editor's own history, including code blocks and editable comparisons. Search inputs retain native text history. No font or image CDN is required.
 
 ## Review
 

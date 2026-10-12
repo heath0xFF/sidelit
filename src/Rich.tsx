@@ -1,12 +1,14 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useImperativeHandle, useRef, type Ref } from "react";
 import { Crepe } from "@milkdown/crepe";
 import { editorViewCtx, serializerCtx } from "@milkdown/kit/core";
 import { $prose, replaceAll } from "@milkdown/kit/utils";
 import { Plugin, TextSelection } from "@milkdown/kit/prose/state";
+import { undo, redo } from "@milkdown/kit/prose/history";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
 import { api } from "./api";
 import { frontmatter, replaceBody } from "./fidelity";
+import type { EditorHistory } from "./history";
 import "@milkdown/crepe/theme/common/style.css";
 import "@milkdown/crepe/theme/frame.css";
 
@@ -33,11 +35,13 @@ export default function Rich({
   text,
   onChange,
   onError,
+  history,
 }: {
   path: string;
   text: string;
   onChange: (text: string) => void;
   onError: (e: unknown) => void;
+  history: Ref<EditorHistory>;
 }) {
   const root = useRef<HTMLDivElement>(null);
   const instance = useRef<Crepe | null>(null);
@@ -49,6 +53,13 @@ export default function Rich({
   const current = useRef(text);
   current.current = text;
   const changing = useRef(false);
+  useImperativeHandle(history, () => (action) => {
+    instance.current?.editor.action((ctx) => {
+      const view = ctx.get(editorViewCtx);
+      (action === "undo" ? undo : redo)(view.state, view.dispatch);
+      view.focus();
+    });
+  }, []);
   useEffect(() => {
     let stopped = false;
     const crepe = new Crepe({
@@ -80,22 +91,27 @@ export default function Rich({
               });
               return safe;
             },
-            view: () => ({
-              update(view, previous) {
-                if (
-                  changing.current ||
-                  stopped ||
-                  view.state.doc.eq(previous.doc)
-                )
-                  return;
-                const next = replaceBody(
-                  current.current,
-                  ctx.get(serializerCtx)(view.state.doc),
-                );
-                applied.current = next;
-                callback.current(next);
-              },
-            }),
+            view: (initial) => {
+              // Returning to the loaded document must restore its original Markdown bytes.
+              let baselineDoc = initial.state.doc;
+              let baselineText = changing.current ? current.current : text;
+              return {
+                update(view, previous) {
+                  if (stopped) return;
+                  if (changing.current) {
+                    baselineDoc = view.state.doc;
+                    baselineText = current.current;
+                    return;
+                  }
+                  if (view.state.doc.eq(previous.doc)) return;
+                  const next = view.state.doc.eq(baselineDoc)
+                    ? baselineText
+                    : replaceBody(current.current, ctx.get(serializerCtx)(view.state.doc));
+                  applied.current = next;
+                  callback.current(next);
+                },
+              };
+            },
             props: {
               nodeViews: {
                 image(node) {
@@ -136,7 +152,7 @@ export default function Rich({
         if (current.current !== applied.current) {
           changing.current = true;
           crepe.editor.action(
-            replaceAll(frontmatter(current.current).body.replaceAll("\r\n", "\n")),
+            replaceAll(frontmatter(current.current).body.replaceAll("\r\n", "\n"), true),
           );
           changing.current = false;
           applied.current = current.current;
@@ -177,7 +193,8 @@ export default function Rich({
     if (instance.current && applied.current !== text) {
       const scroll = root.current!.scrollTop;
       changing.current = true;
-      instance.current.editor.action(replaceAll(frontmatter(text).body.replaceAll("\r\n", "\n")));
+      // Disk replacements start new history; Undo must not restore an obsolete version.
+      instance.current.editor.action(replaceAll(frontmatter(text).body.replaceAll("\r\n", "\n"), true));
       changing.current = false;
       applied.current = text;
       root.current!.scrollTop = scroll;

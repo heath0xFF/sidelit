@@ -11,6 +11,7 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
         true,
         &[
             &PredefinedMenuItem::about(app, Some("About Sidelit"), None)?,
+            &MenuItem::with_id(app, "updates", "Check for Updates…", true, None::<&str>)?,
             &quit,
         ],
     )?;
@@ -36,13 +37,16 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
             &new, &open, &folder, &quick, &save, &save_as, &close, &recovery,
         ],
     )?;
+    // WebKit's native undo manager does not own the editors' history.
+    let undo = MenuItem::with_id(app, "undo", "Undo", true, Some("CmdOrCtrl+Z"))?;
+    let redo = MenuItem::with_id(app, "redo", "Redo", true, Some("CmdOrCtrl+Shift+Z"))?;
     let edit = Submenu::with_items(
         app,
         "Edit",
         true,
         &[
-            &PredefinedMenuItem::undo(app, None)?,
-            &PredefinedMenuItem::redo(app, None)?,
+            &undo,
+            &redo,
             &PredefinedMenuItem::separator(app)?,
             &PredefinedMenuItem::cut(app, None)?,
             &PredefinedMenuItem::copy(app, None)?,

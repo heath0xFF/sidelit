@@ -78,6 +78,39 @@ Packaged smoke output had no worker errors, CSP violations, or unhandled JavaScr
 
 Inspected captures for frontmatter, Quick Open, editable Compare, external-change review, recovery settings, and the restore offer. The existing visual system was retained. The mechanical UI check returned no findings. Native dialog automation was unavailable (`System Events` reported UI scripting disabled); no OS permissions were changed for these tests.
 
+## Rendered width, Undo/Redo, and agent skill
+
+Checked in the isolated `Sidelit Input Check.app` (`app.sidelit.input-check`). The normal running Sidelit instance was left untouched.
+
+- The rendered column has no fixed width cap. Packaged geometry checks confirmed 10% side padding and a 32px minimum gutter in a 300px editor pane. Light/dark captures were inspected. This is not a native narrow-window test; the WebDriver resize limitation still applies.
+- Cmd/Ctrl+Z and Cmd/Ctrl+Shift+Z keyboard events, plus `menu-action` events, reached the real Crepe and Monaco histories. These checks do not prove physical macOS menu key-equivalent dispatch.
+- Undo/Redo worked in rendered paragraphs, code blocks, Source, and editable disk-change adoption. The read-only disk pane and clean-change review did not edit the draft.
+- Returning to the loaded rich document restored its original Markdown, including formatting, frontmatter, and CRLF. Disk refresh reset rich history; Undo did not restore an obsolete disk version. History operations did not save files.
+- Quick Open retained its own native text history. Undo in an empty search field could not change the document behind the dialog. A temporary textarea inside Monaco checked the same field-routing boundary without changing the source buffer.
+- A direct synthetic Find-widget test exposed a canceled promise in Monaco's WebKit clipboard workaround. The routing test uses the textarea fixture instead; native Find/clipboard interaction still needs a manual pass. The final smoke run reported no worker, CSP, or unhandled JavaScript errors.
+- The full desktop smoke test passed, including the real recovery checkpoint, forced termination, restart, conflict-safe restore, and deletion. Restart now waits for the webview to settle before opening its WebDriver session. The script rejects the ordinary application identifier before it can launch or kill an app.
+- All 42 frontend and 12 Rust tests, type checks, and Rust formatting passed. An ordinary `pnpm tauri build --ci --no-bundle -- --locked` passed without test features; no running app bundle was replaced. The mechanical UI check reported no findings.
+- `skills/sidelit/SKILL.md` passed frontmatter validation. Its CLI syntax matches the existing parser and desktop handoff checks. Local links were installed in `~/.agents/skills/sidelit` and `~/.claude/skills/sidelit`.
+
+These features require v0.1.1 or later; v0.1.0 did not include them.
+
+## Signed updates
+
+The repository and downloads are now public. The updater uses the public GitHub release feed, HTTPS checks/downloads, a committed public key, and signed-version enforcement. The private release key is outside Git and is stored separately in an Actions secret; see `RELEASING.md`.
+
+`python3 scripts/updater-smoke.py` passed against real packaged WKWebViews, with a disposable key and local HTTP feed in a separate test app:
+
+- A missing feed reports an error on a manual check without blocking editing.
+- Cancel keeps the draft and the old app. Discard followed by a failed install also keeps the draft in memory and does not change its file.
+- An archive with changed bytes is rejected. A valid signature paired with a false new version is also rejected before installation.
+- Save completes before a valid update replaces the real test bundle. The updated process starts and recognizes its new version; it does not offer that version again.
+- A PATH-symlink CLI launch works. Testing found that a GUI started through the raw symlink could not use Tauri's updater; the CLI now resolves its executable before starting the GUI.
+- Restart works after the original CLI file has been deleted. It does not reuse that file argument or the old handoff receipt.
+
+The test builds versions `0.0.0` and the current version, checks their distinct process lifetimes, and removes its app and temporary key. It never uses the release key or replaces the ordinary Sidelit app. Tests wait for the save dialog before selecting Save, so they cannot click the toolbar's Save button instead. Update-offer and progress captures were inspected; no new layout issue was found.
+
+All 42 frontend and 15 Rust tests passed, including release-signature checks for changed bytes, changed claimed versions, altered trusted comments, and invalid signatures. Type and formatting checks passed. The full desktop smoke test also passed with no worker, CSP, or unhandled JavaScript errors (0.473 s handoff, 0.989 s observed readiness, 0.056 s warm handoff on this run). Actual native administrator approval, a quarantined browser download, and Intel runtime remain unverified.
+
 ## Measured startup and idle use
 
 The following numbers are the **baseline before the font/theme and recovery updates**; process memory and CPU were not remeasured for these changes. Measurements are observations on this Mac, not framework guarantees.
@@ -121,7 +154,7 @@ This does not verify a quarantined browser download or Gatekeeper approval. Rele
 
 - Full native Open/New/Save As/Save Copy dialogs and restore permission dialogs. Desktop tests simulate new save selections and restore approval; they do not prove the native dialogs. Rust creation, authorization, and recovery primitives are tested. Follow the README manual checks.
 - Native macOS key-equivalent routing, full clipboard formats, VoiceOver, or other screen readers.
-- Linux packaging/runtime, other macOS versions, Intel Macs, signing/notarization, or Gatekeeper distribution behavior.
+- Linux packaging/runtime, other macOS versions, Intel Macs, Apple notarization, native update administrator approval, or Gatekeeper distribution behavior.
 - Long-running stress, very large workspaces/files, network filesystems, power-loss recovery, extended file metadata preservation, and dependency advisories.
 
 ## Known risk
