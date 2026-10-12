@@ -1,0 +1,128 @@
+name: Release macOS
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-15
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          cache: true
+
+      - name: Set up Rust
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt
+          rustup default stable
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - name: Check release version and source
+        id: version
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { readFileSync, appendFileSync } from 'node:fs';
+          import { execFileSync, spawnSync } from 'node:child_process';
+          const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
+          const config = JSON.parse(readFileSync('src-tauri/tauri.conf.json', 'utf8'));
+          const metadata = JSON.parse(execFileSync('cargo', ['metadata', '--no-deps', '--locked', '--format-version', '1', '--manifest-path', 'src-tauri/Cargo.toml']));
+          const rust = metadata.packages.find(p => p.name === 'sidelit');
+          assert.match(pkg.version, /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/);
+          assert.equal(config.version, pkg.version, 'Tauri and package versions must match');
+          assert.equal(rust.version, pkg.version, 'Rust and package versions must match');
+          const tag = `v${pkg.version}`;
+          assert.equal(process.env.GITHUB_REF_NAME, process.env.GITHUB_REF_TYPE === 'tag' ? tag : 'main', 'Release from main or the matching version tag');
+          const existing = spawnSync('git', ['rev-parse', '--verify', `refs/tags/${tag}^{commit}`], { encoding: 'utf8' });
+          if (existing.status === 0) assert.equal(existing.stdout.trim(), execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), 'This version tag points to another commit; bump the version');
+          appendFileSync(process.env.GITHUB_OUTPUT, `tag=${tag}\n`);
+          NODE
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install and test
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm check
+          pnpm test
+          cargo fmt --manifest-path src-tauri/Cargo.toml --check
+          cargo test --manifest-path src-tauri/Cargo.toml --locked
+          cargo tree --manifest-path src-tauri/Cargo.toml --locked --edges normal > "$RUNNER_TEMP/runtime-dependencies.txt"
+          if grep 'tauri-plugin-wdio-webdriver' "$RUNNER_TEMP/runtime-dependencies.txt"; then
+            echo '::error::Release builds must not include the desktop test server.'
+            exit 1
+          fi
+
+      - name: Build universal DMG
+        run: pnpm tauri build --ci --target universal-apple-darwin --bundles app,dmg -- --locked
+
+      - name: Verify installer
+        run: |
+          app=src-tauri/target/universal-apple-darwin/release/bundle/macos/Sidelit.app
+          codesign --verify --deep --strict "$app"
+          lipo -verify_arch arm64 x86_64 "$app/Contents/MacOS/sidelit"
+          "$app/Contents/MacOS/sidelit" --version
+          git diff --exit-code -- package.json pnpm-lock.yaml src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json
+          cd src-tauri/target/universal-apple-darwin/release/bundle/dmg
+          images=(*.dmg)
+          test "${#images[@]}" -eq 1
+          hdiutil verify "${images[0]}"
+          mount="$RUNNER_TEMP/sidelit-installer"
+          mkdir -p "$mount"
+          hdiutil attach -readonly -nobrowse -mountpoint "$mount" "${images[0]}"
+          trap 'hdiutil detach "$mount"' EXIT
+          test -d "$mount/Sidelit.app"
+          test "$(readlink "$mount/Applications")" = /Applications
+          codesign --verify --deep --strict "$mount/Sidelit.app"
+          shasum -a 256 "${images[0]}" > SHA256SUMS.txt
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          cat > "$RUNNER_TEMP/release-notes.md" <<'NOTES'
+          ## Install Sidelit
+          Download the `.dmg` below, open it, and drag **Sidelit** into **Applications**. Eject the disk image, then open Sidelit from Applications. No Node, pnpm, or Rust is needed.
+
+          Requires macOS 13 or later. The universal app includes Apple Silicon and Intel binaries. Intel runtime checks are still pending.
+
+          **This release is ad-hoc signed, not Apple-notarized.** If macOS blocks the first launch, use **System Settings → Privacy & Security → Open Anyway** for Sidelit, only if you trust this download. Do not disable Gatekeeper.
+
+          To update, save your work and quit Sidelit before replacing the app. Your Markdown files and recovery data stay separate from the app. There is no automatic updater yet.
+
+          `SHA256SUMS.txt` contains the installer checksum. The “Source code” archives are not installers.
+          NOTES
+          bundle=src-tauri/target/universal-apple-darwin/release/bundle/dmg
+          gh release create "$RELEASE_TAG" "$bundle/"*.dmg "$bundle/SHA256SUMS.txt" \
+            --target "$(git rev-parse HEAD)" --title "Sidelit $RELEASE_TAG" \
+            --notes-file "$RUNNER_TEMP/release-notes.md" --latest
+          echo "Download: https://github.com/$GH_REPO/releases/tag/$RELEASE_TAG" >> "$GITHUB_STEP_SUMMARY"

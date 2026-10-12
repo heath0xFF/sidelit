@@ -7,6 +7,6 @@ if [ -x "$local_app" ]; then
 elif [ -x /Applications/Sidelit.app/Contents/MacOS/sidelit ]; then
   exec /Applications/Sidelit.app/Contents/MacOS/sidelit "$@"
 else
-  printf '%s\n' 'Sidelit is not built or installed. Run pnpm tauri build first.' >&2
+  printf '%s\n' 'Sidelit is not installed. Download the DMG from https://github.com/heath0xFF/sidelit/releases/latest, or build with pnpm tauri build.' >&2
   exit 1
 fi

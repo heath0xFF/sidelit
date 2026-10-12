@@ -17,7 +17,7 @@ All passed:
 - `scripts/desktop-smoke.py` with `SIDELIT_TEST_BINARY` set to that isolated bundle
 - Final **ordinary** `pnpm tauri build`, with no test feature
 
-The final bundle is `src-tauri/target/release/bundle/macos/Sidelit.app`. Its disk size is about **13.01 MiB**. It is an unsigned local build, not a signed/notarized distribution. The build still reports the existing large-editor-chunk warning; Monaco remains lazy-loaded.
+The final bundle is `src-tauri/target/release/bundle/macos/Sidelit.app`. Its disk size is about **13.01 MiB**. It uses an ad-hoc signature, not a Developer ID signature or Apple notarization. The build still reports the existing large-editor-chunk warning; Monaco remains lazy-loaded.
 
 ### Packaged WKWebView checks
 
@@ -102,6 +102,14 @@ The observed RSS sum was roughly **303 MiB rendered** and **450 MiB with Source 
 `ps` sampled idle CPU at **0.0%** for the host, GPU, and networking processes. WebContent samples were **0.0–0.1%** in both modes. CPU time rose about 0.01 s in the eight-second sample span. These short idle samples do not measure editing load or large-document behavior.
 
 Monaco is lazy-loaded, but its memory cost is still material once opened. No lower footprint is claimed.
+
+## Release packaging
+
+A native Apple Silicon DMG was built with `CI=true pnpm tauri build --ci --bundles app,dmg -- --locked`. Its disk-image checksum passed. It was mounted read-only, and its `Sidelit.app`, Applications shortcut, code signature, and executable version were checked. All 54 existing tests passed again.
+
+The release workflow checks version agreement and the source tag before building. Local checks confirmed that `main` and the matching version tag pass; a wrong tag or another branch is rejected. YAML and shell syntax checks passed. The GitHub universal build and published-asset checks are recorded after the first release completes.
+
+This does not verify a quarantined browser download or Gatekeeper approval. Releases are ad-hoc signed and not notarized. See [RELEASING.md](RELEASING.md).
 
 ## Not yet verified
 

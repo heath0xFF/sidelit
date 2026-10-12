@@ -6,9 +6,25 @@ An open-source desktop Markdown editor for people who work with terminal coding 
 
 Tauri 2 uses the operating system's webview. There is **no Electron, bundled Node.js, or Node sidecar**. Node and pnpm are build tools only.
 
-## Run on macOS
+## Download and install
 
-Requirements:
+**[Download the latest macOS release](https://github.com/heath0xFF/sidelit/releases/latest)**
+
+1. Download the `.dmg` under **Assets**, not the source-code archive. This is a private repository; sign in to GitHub with an account that has access.
+2. Open the DMG and drag **Sidelit** into **Applications**.
+3. Eject the disk image, then open Sidelit from Applications.
+
+No Node, pnpm, Rust, or terminal command is needed. The universal app includes Apple Silicon and Intel binaries and requires macOS 13 or later. Intel runtime checks are still pending.
+
+Current releases are **ad-hoc signed, not Apple-notarized**. If macOS blocks the first launch, use **System Settings → Privacy & Security → Open Anyway** for Sidelit, only if you trust this download. Do not disable Gatekeeper.
+
+To update, save your work and quit Sidelit, then replace the app with the new version. Your Markdown files and recovery data stay separate from the app. Updates are manual for now.
+
+For maintainers, [RELEASING.md](RELEASING.md) explains the GitHub build and release workflow.
+
+## Develop on macOS
+
+Build-tool requirements:
 
 - macOS 13 or later. Apple Silicon is the primary target.
 - Xcode Command Line Tools: `xcode-select --install`. A current Xcode also works.
@@ -42,7 +58,10 @@ The native Apple Silicon build is here:
 
 ```text
 src-tauri/target/release/bundle/macos/Sidelit.app
+src-tauri/target/release/bundle/dmg/Sidelit_0.1.0_aarch64.dmg
 ```
+
+The DMG filename includes the app version and target architecture.
 
 You can also open this app in Finder. The bundle contains all frontend assets and Monaco workers. It does not need Vite, Node, or a network connection.
 
@@ -53,7 +72,7 @@ rustup target add aarch64-apple-darwin
 pnpm tauri build --target aarch64-apple-darwin
 ```
 
-That build goes under `src-tauri/target/aarch64-apple-darwin/release/bundle/macos/`. Use its executable directly. Signing and notarization are not configured; do these before distributing public macOS downloads. A locally built app is not a notarized release.
+That build goes under `src-tauri/target/aarch64-apple-darwin/release/bundle/`. GitHub builds both Mac architectures into one universal DMG. The default signature is ad-hoc (`-`); a Developer ID certificate and notarization are still needed for normal Gatekeeper approval. See [RELEASING.md](RELEASING.md).
 
 ### Install the command on PATH
 
@@ -81,7 +100,7 @@ The Rust executable validates the request, launches a detached GUI process when 
 
 ### Linux
 
-The code uses portable Rust filesystem and notify APIs. Install Tauri's current [Linux prerequisites](https://v2.tauri.app/start/prerequisites/#linux), including WebKitGTK 4.1, GTK 3, a C toolchain, and librsvg. Run `pnpm desktop`, or package with `pnpm tauri build --bundles deb,appimage` instead of the macOS `app` target. Linux builds and desktop integration have **not** been verified in this first version.
+The code uses portable Rust filesystem and notify APIs. Install Tauri's current [Linux prerequisites](https://v2.tauri.app/start/prerequisites/#linux), including WebKitGTK 4.1, GTK 3, a C toolchain, and librsvg. Run `pnpm desktop`, or package with `pnpm tauri build --bundles deb,appimage` instead of the macOS `app,dmg` targets. Linux builds and desktop integration have **not** been verified in this first version.
 
 ## Use it
 
