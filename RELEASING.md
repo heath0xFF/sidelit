@@ -46,14 +46,14 @@ For normal first-launch approval, configure a **Developer ID Application** certi
 Maintainers can build a native-architecture DMG without publishing:
 
 ```sh
-pnpm tauri build --ci --bundles app,dmg -- --locked
+CI=true pnpm tauri build --ci --bundles app,dmg -- --locked
 ```
 
 For a local universal build, first install both Rust targets, then use the same build command as the workflow:
 
 ```sh
 rustup target add aarch64-apple-darwin x86_64-apple-darwin
-pnpm tauri build --ci --target universal-apple-darwin --bundles app,dmg -- --locked
+CI=true pnpm tauri build --ci --target universal-apple-darwin --bundles app,dmg -- --locked
 ```
 
 The universal installer is under `src-tauri/target/universal-apple-darwin/release/bundle/dmg/`. Never publish a bundle built with `desktop-test`.

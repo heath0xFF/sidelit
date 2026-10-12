@@ -107,7 +107,13 @@ Monaco is lazy-loaded, but its memory cost is still material once opened. No low
 
 A native Apple Silicon DMG was built with `CI=true pnpm tauri build --ci --bundles app,dmg -- --locked`. Its disk-image checksum passed. It was mounted read-only, and its `Sidelit.app`, Applications shortcut, code signature, and executable version were checked. All 54 existing tests passed again.
 
-The release workflow checks version agreement and the source tag before building. Local checks confirmed that `main` and the matching version tag pass; a wrong tag or another branch is rejected. YAML and shell syntax checks passed. The GitHub universal build and published-asset checks are recorded after the first release completes.
+The release workflow checks version agreement and the source tag before building. Local checks confirmed that `main` and the matching version tag pass; a wrong tag or another branch is rejected. YAML and shell syntax checks passed.
+
+[GitHub Actions run 38310055240](https://github.com/heath0xFF/sidelit/actions/runs/38310055240) passed all tests, built both architectures, verified the installer, and published [v0.1.0](https://github.com/heath0xFF/sidelit/releases/tag/v0.1.0) from commit `4076230`. The published `Sidelit_0.1.0_universal.dmg` is 13,344,897 bytes (about 12.73 MiB).
+
+The actual GitHub download was checked on this Mac: its SHA-256 matched `SHA256SUMS.txt`, its image checksum and code signature passed, and its mounted app contained both `x86_64` and `arm64`. The executable reported `Sidelit 0.1.0`; the bundle identifier and minimum OS were `app.sidelit.desktop` and `13.0`. The Applications shortcut was present. Signing metadata confirmed an ad-hoc signature with no Apple Team ID.
+
+The first CI attempt stopped on an incorrect `lipo` command and published nothing. The check was corrected, then split into one check per architecture for compatibility across Xcode versions.
 
 This does not verify a quarantined browser download or Gatekeeper approval. Releases are ad-hoc signed and not notarized. See [RELEASING.md](RELEASING.md).
 
