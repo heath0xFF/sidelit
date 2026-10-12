@@ -148,6 +148,8 @@ The actual GitHub download was checked on this Mac: its SHA-256 matched `SHA256S
 
 The first CI attempt stopped on an incorrect `lipo` command and published nothing. The check was corrected, then split into one check per architecture for compatibility across Xcode versions.
 
+[Actions run 38323404615](https://github.com/heath0xFF/sidelit/actions/runs/38323404615) published [v0.1.1](https://github.com/heath0xFF/sidelit/releases/tag/v0.1.1) from `f5e4c61`. Its universal DMG is 16,450,180 bytes (about 15.69 MiB); its signed update archive is 16,726,607 bytes. All five assets were downloaded without GitHub authentication. Their checksums passed. The update archive's signature and signed version passed against the committed public key, and the generated manifest matched the downloaded one. The mounted DMG's signature, both architectures, version `0.1.1`, bundle identifier, minimum OS, and Applications shortcut passed again. The ordinary production build also passed without test features.
+
 This does not verify a quarantined browser download or Gatekeeper approval. Releases are ad-hoc signed and not notarized. See [RELEASING.md](RELEASING.md).
 
 ## Not yet verified
