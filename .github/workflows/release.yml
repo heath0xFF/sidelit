@@ -66,6 +66,7 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: src-tauri -> target
+          cache-on-failure: true
 
       - name: Install and test
         run: |
@@ -81,13 +82,16 @@ jobs:
           fi
 
       - name: Build universal DMG
-        run: pnpm tauri build --ci --target universal-apple-darwin --bundles app,dmg -- --locked
+        run: |
+          # Old installers in the Rust cache must not enter a new release.
+          rm -rf src-tauri/target/universal-apple-darwin/release/bundle
+          pnpm tauri build --ci --target universal-apple-darwin --bundles app,dmg -- --locked
 
       - name: Verify installer
         run: |
           app=src-tauri/target/universal-apple-darwin/release/bundle/macos/Sidelit.app
           codesign --verify --deep --strict "$app"
-          lipo -verify_arch arm64 x86_64 "$app/Contents/MacOS/sidelit"
+          lipo "$app/Contents/MacOS/sidelit" -verify_arch arm64 x86_64
           "$app/Contents/MacOS/sidelit" --version
           git diff --exit-code -- package.json pnpm-lock.yaml src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json
           cd src-tauri/target/universal-apple-darwin/release/bundle/dmg
