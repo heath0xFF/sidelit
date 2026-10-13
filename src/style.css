@@ -4,7 +4,10 @@
   background: var(--paper);
   --paper: #fafafa;
   --chrome: #f0f0f0;
-  --sidebar: #eaeaeb;
+  --sidebar: #f0f0f0;
+  --hover: #e8e9eb;
+  --active: #dfe1e5;
+  --rule: #e1e2e5;
   --text: #383a42;
   --muted: #696c77;
   --line: #d3d4d8;
@@ -18,6 +21,16 @@
   --syntax-function: #326ac6;
   --syntax-variable: #b83a34;
   --syntax-type: #986801;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --radius-control: 4px;
+  --radius-surface: 6px;
+  --control-height: 32px;
+  --toolbar-height: 48px;
+  --tabs-height: 36px;
+  --status-height: 26px;
   --document-font-size: 16px;
   --font-prose: "IBM Plex Sans Variable", sans-serif;
   --font-mono: "Inconsolata Variable", monospace;
@@ -28,6 +41,9 @@
   --paper: #282c34;
   --chrome: #21252b;
   --sidebar: #21252b;
+  --hover: #2c313a;
+  --active: #353b46;
+  --rule: #343943;
   --text: #abb2bf;
   --muted: #9299a7;
   --line: #3e4451;
@@ -56,13 +72,14 @@ button {
   color: inherit;
   background: none;
   border: 0;
-  border-radius: 5px;
+  border-radius: var(--radius-control);
   cursor: pointer;
-  padding: 7px 10px;
+  min-height: var(--control-height);
+  padding: 6px 10px;
   white-space: nowrap;
 }
-button:hover {
-  background: var(--selected);
+button:hover:not(:disabled) {
+  background: var(--hover);
 }
 button:disabled {
   opacity: 0.5;
@@ -71,6 +88,7 @@ button:disabled {
 button:focus-visible,
 summary:focus-visible,
 input:focus-visible,
+textarea:focus-visible,
 select:focus-visible,
 [tabindex]:focus-visible {
   outline: 2px solid var(--accent);
@@ -100,13 +118,12 @@ textarea {
   background: var(--paper);
 }
 .toolbar {
-  height: 56px;
+  height: var(--toolbar-height);
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 0 16px;
-  border-bottom: 1px solid var(--line);
+  gap: var(--space-1);
+  padding: 0 var(--space-3);
   background: var(--chrome);
   font-size: 12px;
   user-select: none;
@@ -114,8 +131,8 @@ textarea {
 .icon-button {
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
+  width: var(--control-height);
+  height: var(--control-height);
   padding: 6px;
 }
 .toolbar svg {
@@ -125,120 +142,119 @@ textarea {
 .font-controls {
   display: flex;
   align-items: center;
-  border-left: 1px solid var(--line);
-  padding-left: 8px;
-  margin-left: 4px;
+  gap: var(--space-1);
 }
 .font-controls button {
-  padding: 7px 6px;
+  padding: 6px;
 }
 .font-size-value {
   min-width: 42px;
-  color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 .theme-control {
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding-left: 8px;
+  gap: var(--space-2);
 }
 .theme-control select {
   font: inherit;
   color: var(--text);
-  background: var(--chrome);
-  border: 0;
-  border-radius: 5px;
-  padding: 7px 3px;
-  max-width: 100px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  min-height: var(--control-height);
+  padding: 4px;
+  width: 114px;
   cursor: pointer;
 }
-.brand {
-  font-weight: 650;
-  font-size: 16px;
-  letter-spacing: -0.4px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0 12px 0 4px;
-}
-.brand-dot {
-  width: 5px;
-  height: 5px;
-  background: var(--accent);
-  border-radius: 50%;
-  align-self: flex-end;
-  margin-bottom: 4px;
-}
-.toolbar-divider {
-  height: 20px;
-  width: 1px;
-  background: var(--line);
-  margin: 0 8px;
+.font-controls > span,
+.theme-control > span {
+  flex: 1;
 }
 .app-menu {
   position: relative;
 }
 .app-menu summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-height);
+  padding: 6px 10px;
+  border-radius: var(--radius-control);
   cursor: pointer;
-  border-radius: 5px;
-  padding: 7px 10px;
+  list-style: none;
 }
-.app-menu summary:hover,
+.app-menu summary::-webkit-details-marker {
+  display: none;
+}
+.app-menu summary:hover {
+  background: var(--hover);
+}
+.app-menu summary svg {
+  width: 10px;
+  height: 10px;
+  transform: rotate(90deg);
+}
 .app-menu[open] summary {
-  background: var(--selected);
+  background: var(--active);
 }
 .app-menu-items {
   position: absolute;
-  top: calc(100% + 8px);
+  top: calc(100% + var(--space-2));
   left: 0;
   z-index: 30;
-  width: 250px;
-  padding: 6px;
+  margin: 0;
+  width: 272px;
+  max-height: calc(100vh - var(--toolbar-height) - var(--space-2));
+  overflow: auto;
+  padding: var(--space-1);
+  font-size: 12px;
+  color: var(--text);
   background: var(--paper);
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: var(--radius-surface);
 }
-.app-menu-items button {
+.file-actions button {
   display: flex;
   justify-content: space-between;
-  gap: 16px;
+  align-items: center;
+  gap: var(--space-4);
   width: 100%;
   text-align: left;
-  padding: 9px 10px;
+  padding: 6px var(--space-2);
 }
 .app-menu-items kbd {
   font-family: var(--font-mono);
   color: var(--muted);
 }
-.toolbar-title {
+.appearance-actions {
+  display: grid;
+  gap: var(--space-2);
+  border-top: 1px solid var(--rule);
+  margin-top: var(--space-1);
+  padding: var(--space-3) var(--space-2) var(--space-1);
+}
+.toolbar-space {
   flex: 1;
-  text-align: center;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--muted);
-  font-size: 12px;
-  padding: 0 10px;
 }
 .mode-switch {
   display: flex;
-  background: var(--sidebar);
-  padding: 3px;
-  border-radius: 7px;
+  background: var(--hover);
+  padding: 2px;
+  border-radius: var(--radius-surface);
 }
 .mode-switch button {
-  padding: 5px 10px;
+  min-height: 28px;
+  padding: 4px 10px;
+  color: var(--muted);
 }
 .mode-switch [aria-pressed="true"] {
   background: var(--paper);
-  color: var(--accent);
-  box-shadow: 0 1px 3px #0001;
+  color: var(--text);
 }
 .save-button {
-  margin: 0 6px;
-  color: var(--accent);
-  font-weight: 600;
+  margin-left: var(--space-2);
+  font-weight: 500;
 }
 .layout {
   flex: 1;
@@ -256,9 +272,10 @@ textarea {
 }
 .workspace-heading {
   display: flex;
-  gap: 9px;
+  gap: var(--space-2);
   align-items: center;
-  padding: 21px 16px 15px;
+  min-height: var(--tabs-height);
+  padding: var(--space-2) var(--space-4);
   font-weight: 600;
 }
 .workspace-heading span {
@@ -276,9 +293,11 @@ textarea {
   align-items: center;
   gap: 6px;
   text-align: left;
-  width: 100%;
-  border-radius: 0;
-  height: 31px;
+  width: calc(100% - 12px);
+  margin: 1px 6px;
+  border-radius: var(--radius-control);
+  min-height: 30px;
+  height: 30px;
   padding-right: 10px;
 }
 .tree-row span:last-child {
@@ -291,11 +310,8 @@ textarea {
   color: var(--muted);
 }
 .tree-row.selected {
-  background: var(--selected);
-  color: var(--accent);
-}
-.tree-row.selected svg {
-  color: var(--accent);
+  background: var(--active);
+  color: var(--text);
 }
 .tree-indent {
   width: 12px;
@@ -331,15 +347,9 @@ textarea {
 .sidebar-empty button {
   border: 1px solid var(--line);
 }
-.sidebar-footer {
-  margin-top: auto;
-  padding: 24px 20px 16px;
-  color: var(--muted);
-  font-size: 11px;
-}
 .resize-handle {
   width: 1px;
-  background: var(--line);
+  background: var(--rule);
   position: relative;
   cursor: col-resize;
   flex-shrink: 0;
@@ -353,6 +363,9 @@ textarea {
 .resize-handle:hover {
   background: var(--accent);
 }
+.resize-handle:focus-visible:after {
+  outline: 2px solid var(--accent);
+}
 .main {
   flex: 1;
   min-width: 0;
@@ -365,36 +378,30 @@ textarea {
   display: flex;
   flex-shrink: 0;
   overflow-x: auto;
-  min-height: 39px;
+  min-height: var(--tabs-height);
   background: var(--chrome);
-  border-bottom: 1px solid var(--line);
+  box-shadow: inset 0 -1px var(--rule);
   font-size: 12px;
 }
 .tab {
   display: flex;
   align-items: center;
-  border-right: 1px solid var(--line);
-  max-width: 250px;
+  color: var(--muted);
+  max-width: 240px;
   flex-shrink: 0;
   position: relative;
 }
 .tab.active {
   background: var(--paper);
-}
-.tab.active:after {
-  content: "";
-  position: absolute;
-  bottom: 0;
-  left: 12px;
-  right: 12px;
-  height: 2px;
-  background: var(--accent);
+  color: var(--text);
 }
 .tab > button:first-child {
   display: flex;
-  gap: 7px;
+  gap: var(--space-2);
   align-items: center;
-  padding: 10px 8px 10px 14px;
+  min-width: 0;
+  min-height: var(--tabs-height);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
   overflow: hidden;
 }
 .tab > button:first-child span:first-of-type {
@@ -402,10 +409,19 @@ textarea {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.tab > button:first-child svg {
+  flex-shrink: 0;
+  color: var(--muted);
+}
 .tab-close {
-  padding: 4px;
-  margin-right: 7px;
-  display: flex;
+  padding: var(--space-1);
+  min-height: 24px;
+  width: 24px;
+  margin-right: var(--space-1);
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
 }
 .tab-close svg {
   width: 12px;
@@ -443,7 +459,7 @@ textarea {
   --crepe-color-on-secondary: var(--text);
   --crepe-color-inverse: var(--text);
   --crepe-color-on-inverse: var(--paper);
-  --crepe-color-hover: var(--selected);
+  --crepe-color-hover: var(--hover);
   --crepe-color-selected: var(--selected);
   --crepe-color-inline-area: var(--chrome);
   --crepe-color-inline-code: var(--syntax-variable);
@@ -459,38 +475,50 @@ textarea {
 .milkdown .ProseMirror {
   max-width: none;
   min-height: 100%;
-  padding: 54px max(32px, 10%) 120px;
+  padding: 40px max(32px, 10%) 96px;
   margin: 0 auto;
   outline: none;
   font-size: var(--document-font-size);
   line-height: 1.5;
   caret-color: var(--accent);
 }
+.milkdown .ProseMirror :is(h1, h2, h3, h4, h5, h6) {
+  padding: 0;
+}
+/* The cursor widget can precede the first document block. */
+.milkdown .ProseMirror > :nth-child(1 of :not(.ProseMirror-widget, .prosemirror-virtual-cursor)) {
+  margin-top: 0;
+}
 .milkdown .ProseMirror h1 {
   font-size: 2em;
   line-height: 1.2;
   font-weight: 650;
-  letter-spacing: -0.7px;
-  margin: 0 0 26px;
+  letter-spacing: -0.025em;
+  margin: 1.25em 0 0.625em;
 }
 .milkdown .ProseMirror h2 {
   font-size: 1.4375em;
   line-height: 1.35;
-  margin: 34px 0 14px;
-  font-weight: 620;
-  letter-spacing: -0.35px;
+  margin: 1.5em 0 0.5em;
+  font-weight: 600;
+  letter-spacing: -0.015em;
 }
 .milkdown .ProseMirror h3 {
   font-size: 1.125em;
-  margin: 28px 0 10px;
+  font-weight: 600;
+  line-height: 1.4;
+  margin: 1.5em 0 0.5em;
 }
 .milkdown .ProseMirror :is(h4, h5, h6) {
   font-size: 1em;
   font-weight: 600;
-  margin: 24px 0 10px;
+  margin: 1.5em 0 0.5em;
 }
 .milkdown .ProseMirror p {
   margin: 12px 0;
+}
+.milkdown .ProseMirror .list-item > .children > .content-dom > p {
+  margin: 0.25em 0;
 }
 .milkdown .ProseMirror .list-item > .children > .content-dom > p:first-child {
   margin-top: 0;
@@ -510,8 +538,8 @@ textarea {
   height: 1.25em;
 }
 .milkdown .ProseMirror blockquote {
-  border-left: 1px solid var(--accent);
-  padding-left: 22px;
+  border-left: 1px solid var(--line);
+  padding-left: var(--space-4);
   color: var(--muted);
   margin-left: 0;
 }
@@ -522,11 +550,28 @@ textarea {
 .milkdown .ProseMirror pre,
 .milkdown .milkdown-code-block {
   background: var(--chrome);
-  border-radius: 7px;
+  border-radius: var(--radius-surface);
+}
+.milkdown button {
+  min-height: 0;
+}
+.milkdown .milkdown-code-block:focus-within :is(.language-button, .tools-button-group > button) {
+  opacity: 1;
 }
 .milkdown .ProseMirror table {
   font-size: 1em;
   font-variant-numeric: tabular-nums;
+}
+.milkdown .ProseMirror :is(th, td) {
+  border-color: var(--rule);
+  padding: 6px var(--space-3);
+}
+.milkdown .ProseMirror th {
+  background: var(--chrome);
+  font-weight: 600;
+}
+.milkdown .ProseMirror :is(th, td) p {
+  margin: 0;
 }
 .milkdown .ProseMirror hr {
   border: 0;
@@ -538,14 +583,14 @@ textarea {
   height: auto;
 }
 .statusbar {
-  height: 29px;
+  height: var(--status-height);
   flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 24px;
   padding: 0 18px;
-  background: var(--chrome);
-  border-top: 1px solid var(--line);
+  background: var(--paper);
+  border-top: 1px solid var(--rule);
   color: var(--muted);
   font-size: 11px;
 }
@@ -560,13 +605,17 @@ textarea {
 }
 .conflict {
   background: var(--warning);
-  padding: 14px 22px;
+  padding: var(--space-3) var(--space-4);
   display: flex;
-  gap: 18px;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
   align-items: center;
   justify-content: space-between;
   font-size: 12px;
   border-bottom: 1px solid var(--line);
+}
+.conflict > div:first-child {
+  flex: 1 1 260px;
 }
 .conflict strong {
   font-weight: 650;
@@ -578,7 +627,8 @@ textarea {
 }
 .conflict-actions {
   display: flex;
-  gap: 4px;
+  flex-wrap: wrap;
+  gap: var(--space-1);
 }
 .conflict-actions button {
   border: 1px solid var(--line);
@@ -698,7 +748,7 @@ textarea {
   color: var(--paper);
   padding: 10px 16px;
 }
-.primary:hover {
+.primary:hover:not(:disabled) {
   background: var(--text);
   color: var(--paper);
 }
@@ -846,7 +896,7 @@ textarea {
 }
 .milkdown .cm-activeLine,
 .milkdown .cm-activeLineGutter {
-  background: var(--selected);
+  background: var(--hover);
 }
 .milkdown .cm-selectionBackground,
 .milkdown .cm-focused .cm-selectionBackground {
@@ -856,17 +906,13 @@ textarea {
   border-left-color: var(--text);
 }
 .milkdown .ProseMirror :not(pre) > code {
-  color: var(--accent);
+  color: var(--text);
   background: var(--chrome);
 }
 .milkdown .ProseMirror blockquote:before {
   display: none;
 }
 @media (max-width: 900px) {
-  .toolbar-title,
-  .toolbar .open-folder {
-    display: none;
-  }
   .comparison-help,
   .changes-banner {
     flex-wrap: wrap;
@@ -875,36 +921,8 @@ textarea {
   .changes-banner span {
     flex-basis: 100%;
   }
-  .toolbar {
-    gap: 1px;
-    padding: 0 8px;
-  }
-  .toolbar .mode-switch {
-    margin-left: auto;
-  }
-  .conflict {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 10px;
-  }
   .milkdown .ProseMirror {
-    padding: 38px 34px 100px;
-  }
-  .brand {
-    display: none;
-  }
-  .toolbar-divider {
-    margin: 0 3px;
-  }
-  .font-controls {
-    padding-left: 4px;
-    margin-left: 0;
-  }
-  .font-controls button {
-    padding-inline: 4px;
-  }
-  .theme-control {
-    padding-left: 4px;
+    padding-block: 32px 80px;
   }
   .statusbar {
     gap: 12px;

@@ -131,9 +131,9 @@ The code uses portable Rust filesystem and notify APIs. Install Tauri's current 
 - **Source** is Monaco, with line numbers, wrapping, find/replace, and undo/redo. It loads only when Source or Compare first opens.
 - **Save** is explicit. Optional recovery writes a separate checkpoint, never an automatic save over your Markdown files.
 - **Check for Updates** is under Actions and the native Sidelit menu. An update offers **Install & Restart**; it never silently restarts an editor with a draft.
-- The theme selector offers **System**, **One Light**, and **One Dark**. System is the default and follows OS theme changes. An explicit choice is retained across launches.
+- **Actions → Theme** offers **System**, **One Light**, and **One Dark**. System is the default and follows OS theme changes. An explicit choice is retained across launches.
 - Rendered text uses **IBM Plex Sans**. Source, inline code, code blocks, and Compare use **Inconsolata**. Both fonts are bundled locally, including IBM Plex Sans italics; no network or font installation is needed.
-- Use **A− / A+** to set document text size from 12–28px. Click the size value to reset to 16px. The setting is shared across editing modes and retained across launches; it does not change Markdown, undo history, or the shell's text size.
+- Use **Actions → Text size → A− / A+** to set document text size from 12–28px. Click the size value to reset to 16px. The setting is shared across editing modes and retained across launches; it does not change Markdown, undo history, or the shell's text size.
 
 | Shortcut | Action |
 | --- | --- |

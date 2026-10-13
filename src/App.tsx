@@ -208,6 +208,16 @@ export default function App() {
   const [active, setActive] = useState("");
   const [workspace, setWorkspace] = useState("");
   const [sidebar, setSidebar] = useState(true);
+  const actionsRef = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    const dismiss = (event: PointerEvent) => {
+      if (!actionsRef.current?.contains(event.target as Node)) {
+        actionsRef.current?.removeAttribute("open");
+      }
+    };
+    document.addEventListener("pointerdown", dismiss);
+    return () => document.removeEventListener("pointerdown", dismiss);
+  }, []);
   const [width, setWidth] = useState(240);
   const [refresh, setRefresh] = useState(0);
   const [error, setError] = useState("");
@@ -617,31 +627,76 @@ export default function App() {
         >
           <Icon type="sidebar" />
         </button>
-        <div className="brand">
-          Sidelit
-          <span className="brand-dot" />
-        </div>
-        <div className="toolbar-divider" />
         <button onClick={() => void api.choose(false).catch(report)} title="⌘O">
           Open File
         </button>
-        <button className="open-folder" onClick={() => void api.choose(true).catch(report)} title="⇧⌘O">
-          Open Folder
-        </button>
-        <details className="app-menu">
-          <summary>Actions</summary>
-          <div className="app-menu-items" onClick={(event) => event.currentTarget.closest("details")?.removeAttribute("open")}>
-            <button onClick={() => void newFile()}>New File… <kbd>⌘N</kbd></button>
-            <button disabled={!doc} onClick={() => void copy(false)}>Save As… <kbd>⇧⌘S</kbd></button>
-            <button onClick={() => setQuick(true)}>Quick Open… <kbd>⌘P</kbd></button>
-            <button onClick={() => void api.choose(true).catch(report)}>Open Folder…</button>
-            <button onClick={() => setSessionDialog(true)}>Session & Recovery…</button>
-            <button disabled={checkingUpdate} onClick={() => void checkUpdates(true)}>Check for Updates…</button>
+        <details
+          className="app-menu"
+          ref={actionsRef}
+          onKeyDown={(event) => {
+            if (event.key === "Escape" && event.currentTarget.open) {
+              event.preventDefault();
+              event.currentTarget.open = false;
+              event.currentTarget.querySelector("summary")?.focus();
+            }
+          }}
+          onBlur={(event) => {
+            if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget)) {
+              event.currentTarget.open = false;
+            }
+          }}
+        >
+          <summary title="File and appearance actions">
+            Actions <Icon type="chevron" />
+          </summary>
+          <div id="app-actions" className="app-menu-items" role="group" aria-label="File and appearance actions">
+            <div className="file-actions" onClick={() => actionsRef.current?.removeAttribute("open")}>
+              <button onClick={() => void newFile()}>New File… <kbd>⌘N</kbd></button>
+              <button disabled={!doc} onClick={() => void copy(false)}>Save As… <kbd>⇧⌘S</kbd></button>
+              <button onClick={() => setQuick(true)}>Quick Open… <kbd>⌘P</kbd></button>
+              <button onClick={() => void api.choose(true).catch(report)}>Open Folder… <kbd>⇧⌘O</kbd></button>
+              <button onClick={() => setSessionDialog(true)}>Session & Recovery…</button>
+              <button disabled={checkingUpdate} onClick={() => void checkUpdates(true)}>Check for Updates…</button>
+            </div>
+            <div className="appearance-actions" role="group" aria-label="Appearance">
+              <label className="theme-control" title="Color theme">
+                <span>Theme</span>
+                <Icon type={theme === "system" ? "system" : dark ? "moon" : "sun"} />
+                <select
+                  aria-label="Theme"
+                  value={theme}
+                  onChange={(event) => setTheme(themePreference(event.target.value))}
+                >
+                  <option value="system">System</option>
+                  <option value="light">One Light</option>
+                  <option value="dark">One Dark</option>
+                </select>
+              </label>
+              <div className="font-controls" role="group" aria-label="Document font size">
+                <span>Text size</span>
+                <button
+                  aria-label="Decrease font size"
+                  title="Decrease font size (⌘− / Ctrl+−)"
+                  disabled={size === MIN_FONT_SIZE}
+                  onClick={() => changeSize(-1)}
+                >A−</button>
+                <button
+                  className="font-size-value"
+                  aria-label={`Font size ${size} pixels. Reset to ${DEFAULT_FONT_SIZE}`}
+                  title="Reset font size (⌘0 / Ctrl+0)"
+                  onClick={() => setSize(DEFAULT_FONT_SIZE)}
+                >{size}px</button>
+                <button
+                  aria-label="Increase font size"
+                  title="Increase font size (⌘+ / Ctrl++)"
+                  disabled={size === MAX_FONT_SIZE}
+                  onClick={() => changeSize(1)}
+                >A+</button>
+              </div>
+            </div>
           </div>
         </details>
-        <div className="toolbar-title" title={doc?.path}>
-          {doc ? name(doc.path) : "Markdown, beside your work."}
-        </div>
+        <div className="toolbar-space" />
         {doc && (
           <div className="mode-switch" aria-label="Editing mode">
             <button
@@ -657,6 +712,7 @@ export default function App() {
             </button>
             <button
               aria-pressed={mode === "source"}
+              title="Source editing (⌘\\)"
               onClick={() => {
                 documents.setMode(doc.path, "source");
                 setCompare(null);
@@ -676,48 +732,6 @@ export default function App() {
             {doc.saving ? "Saving…" : comparison?.kind === "conflict" ? "Save Merged" : "Save"}
           </button>
         )}
-        <div
-          className="font-controls"
-          role="group"
-          aria-label="Document font size"
-        >
-          <button
-            aria-label="Decrease font size"
-            title="Decrease font size (⌘− / Ctrl+−)"
-            disabled={size === MIN_FONT_SIZE}
-            onClick={() => changeSize(-1)}
-          >
-            A−
-          </button>
-          <button
-            className="font-size-value"
-            aria-label={`Font size ${size} pixels. Reset to ${DEFAULT_FONT_SIZE}`}
-            title="Reset font size (⌘0 / Ctrl+0)"
-            onClick={() => setSize(DEFAULT_FONT_SIZE)}
-          >
-            {size}px
-          </button>
-          <button
-            aria-label="Increase font size"
-            title="Increase font size (⌘+ / Ctrl++)"
-            disabled={size === MAX_FONT_SIZE}
-            onClick={() => changeSize(1)}
-          >
-            A+
-          </button>
-        </div>
-        <label className="theme-control" title="Color theme">
-          <Icon type={theme === "system" ? "system" : dark ? "moon" : "sun"} />
-          <select
-            aria-label="Theme"
-            value={theme}
-            onChange={(event) => setTheme(themePreference(event.target.value))}
-          >
-            <option value="system">System</option>
-            <option value="light">One Light</option>
-            <option value="dark">One Dark</option>
-          </select>
-        </label>
       </header>
       <div className="layout">
         {sidebar && (
@@ -743,13 +757,11 @@ export default function App() {
                 />
               ) : (
                 <div className="sidebar-empty">
-                  <p>Keep your documents in view.</p>
                   <button onClick={() => void api.choose(true).catch(report)}>
                     Open a folder
                   </button>
                 </div>
               )}
-              <div className="sidebar-footer">Local files. Yours to keep.</div>
             </aside>
             <div
               className="resize-handle"
@@ -805,6 +817,7 @@ export default function App() {
                   </button>
                   <button
                     className="tab-close"
+                    title={`Close ${name(d.path)}`}
                     aria-label={`Close ${name(d.path)}`}
                     onClick={() => void close(d)}
                   >

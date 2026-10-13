@@ -111,6 +111,34 @@ The test builds versions `0.0.0` and the current version, checks their distinct 
 
 All 42 frontend and 15 Rust tests passed, including release-signature checks for changed bytes, changed claimed versions, altered trusted comments, and invalid signatures. Type and formatting checks passed. The full desktop smoke test also passed with no worker, CSP, or unhandled JavaScript errors (0.473 s handoff, 0.989 s observed readiness, 0.056 s warm handoff on this run). Actual native administrator approval, a quarantined browser download, and Intel runtime remain unverified.
 
+## Visual polish
+
+Checked in the isolated `Sidelit Polish Check.app` (`app.sidelit.polish-check`). No ordinary app bundle was replaced. The changes are limited to the shell, CSS, menu dismissal, tests, and documentation; the editors and file services are unchanged.
+
+Before/after captures use the same fixture, three tabs, sidebar width, and native window sizes. Measured CSS viewports were **1180×790** and **720×630**. AeroSpace was forcing the test window into a tile; floating only that window allowed WebDriver to resize it. This resolves the earlier narrow-window test limitation on this machine.
+
+Visually inspected:
+
+- One Light and One Dark, with long filenames, nested folders, multiple tabs, and neutral selection states.
+- Rendered headings, nested/wrapped lists, tasks, two-digit markers, tables, inline code, and fenced code.
+- A real unsaved edit beside a watched disk conflict, in both window sizes.
+- Actions and its appearance controls, a visible focus ring after Escape, and the panel fitting a **720×480** CSS viewport.
+- Source in both themes, with the unsaved indicator and conflict actions retained.
+
+Captures and the local fixture/capture script are in ignored `test-results/polish/`. Compare `before/` with `final/`. Tern screenshots were not available in the request or local repository, so no direct reference-image comparison is claimed.
+
+Passed:
+
+- `pnpm check` and all **58 frontend tests**.
+- Rust formatting, `cargo check`, and all **15 Rust tests** (12 app tests plus 3 release-signature tests).
+- Isolated packaged build and the full `scripts/desktop-smoke.py` run, including recovery crash/restart/deletion. No worker, CSP, or unhandled JavaScript errors were reported.
+- New desktop assertions for Actions staying open during text-size changes, Escape focus return, outside-pointer dismissal, focus leaving the panel, and dismissal on a file action.
+- First-heading spacing before and after a real edit, including Crepe's cursor widgets. Existing list geometry checks still pass at 12, 16, 24, and 28px.
+- Existing no-op save, editor identity, undo/redo, and fluid-width checks. A separate capture assertion retained the dirty rendered draft, DOM identity, selection, and scroll through a theme change.
+- Ordinary `pnpm tauri build --ci --no-bundle -- --locked`, without test instrumentation. The existing large-editor-chunk warning remains.
+
+A mechanical UI scan reported no findings. The test app was closed after the checks. Physical keyboard traversal, native dialogs, VoiceOver, and older macOS/Linux runtimes still need manual verification. No updater install test was repeated for this visual-only change.
+
 ## Measured startup and idle use
 
 The following numbers are the **baseline before the font/theme and recovery updates**; process memory and CPU were not remeasured for these changes. Measurements are observations on this Mac, not framework guarantees.

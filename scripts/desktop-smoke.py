@@ -109,6 +109,7 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
         assert metrics['cap'] == 'none' and abs(metrics['left'] - expected) < 1 and abs(metrics['right'] - expected) < 1, metrics
 
     check_column()
+    assert js('return getComputedStyle(document.querySelector(".ProseMirror h1")).marginTop') == '0px', 'first heading has no extra top margin'
     js('document.querySelector(".rich-editor").style.width="300px"')
     check_column()
     js('document.querySelector(".rich-editor").style.removeProperty("width")')
@@ -125,6 +126,18 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
         js('for(let i=0;i<arguments[1];i++)document.querySelector(`button[aria-label="${arguments[0]}"]`).click()', control, abs(size - 16))
         wait(lambda: js('return document.querySelector(".font-size-value").textContent') == f'{size}px', 'font size ' + str(size))
 
+    js('document.querySelector(".app-menu summary").click()')
+    assert js('return document.querySelector(".app-menu").open')
+    set_size(17)
+    assert js('return document.querySelector(".app-menu").open'), 'appearance controls stay open'
+    set_size(16)
+    js('document.querySelector(".font-size-value").dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true,cancelable:true}))')
+    assert not js('return document.querySelector(".app-menu").open')
+    assert js('return document.activeElement.matches(".app-menu summary")'), 'Escape returns focus'
+    js('document.querySelector(".app-menu summary").click();document.querySelector(".toolbar-space").dispatchEvent(new PointerEvent("pointerdown",{bubbles:true}))')
+    assert not js('return document.querySelector(".app-menu").open'), 'outside pointer dismisses Actions'
+    js('document.querySelector(".app-menu summary").click();document.querySelector(".font-size-value").focus();document.querySelector(".save-button").focus()')
+    assert not js('return document.querySelector(".app-menu").open'), 'focus leaving Actions dismisses it'
     set_theme('system')
     assert js('return localStorage.getItem("themePreference")') == 'system'
     wait(lambda: js('return [...document.fonts].some(f=>f.family.includes("IBM Plex Sans")&&f.status==="loaded")'), 'bundled IBM Plex Sans')
@@ -165,6 +178,7 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     # A real contenteditable input transaction must update the shared buffer synchronously.
     js('const el=document.querySelector(".ProseMirror p");el.focus();const r=document.createRange();r.selectNodeContents(el);const s=getSelection();s.removeAllRanges();s.addRange(r);document.execCommand("insertText",false,"Edited in WKWebView.")')
     wait(lambda: js('return !!document.querySelector(".dirty-dot")'), 'rich edit')
+    assert js('return getComputedStyle(document.querySelector(".ProseMirror h1")).marginTop') == '0px', 'cursor widgets must not move the heading'
     history_action('undo')
     wait(lambda: 'A paragraph to edit.' in body() and not js('return !!document.querySelector(".tab.active .dirty-dot")'), 'rich keyboard undo')
     history_action('redo')
@@ -511,6 +525,7 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
 
     js('document.querySelector(".app-menu summary").click()')
     click('Session & Recovery…')
+    assert not js('return document.querySelector(".app-menu").open'), 'file actions close Actions'
     wait(lambda: js('return !!document.querySelector(".session-dialog")'), 'recovery settings')
     click('Turn on recovery')
     wait(lambda: 'Turn off and delete saved session' in body(), 'recovery enabled')
