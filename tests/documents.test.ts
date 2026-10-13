@@ -1,3 +1,4 @@
+import readme from "../README.md?raw";
 import { describe, expect, it, vi } from "vitest";
 import { Documents, dirty, type Transport } from "../src/documents";
 import { sourceReason, lineEndings, frontmatter, replaceBody } from "../src/fidelity";
@@ -261,10 +262,41 @@ describe("fidelity gate", () => {
     "[x][ref]\n\n[ref]: https://example.org",
     "```mermaid\ngraph LR; A-->B\n```",
     "$$x$$",
+    "`$HOME` then $x$",
+    "```sh\necho $HOME\n```\n\n\\(x\\)",
+    "`example`\n\n\\[x\\]",
+    "`example`\n\n:::note\nContent\n:::",
+    "`example`\n\n[^note]: Footnote",
+    "```html\n<script>example</script>\n```\n\n<script>real</script>",
+    "```sh title=example\necho $HOME\n```",
     "[x](javascript:alert)",
   ])("routes unsupported syntax to source: %s", (text) =>
     expect(sourceReason(text)).toBeTruthy(),
   );
+  it.each([
+    "```sh\necho \"$HOME\" \"$PWD\"\nexport PATH=\"$HOME/.local/bin:$PATH\"\n```",
+    "Use `$HOME`, `\\(x\\)`, `\\[x\\]`, `[^note]`, and `:::note` literally.",
+    "~~~text\n$x$\n\\(x\\)\n:::note\n[^note]: example\n~~~",
+    "    echo $HOME\n    \\(x\\)\n    :::note\n",
+    "> ```sh\n> echo $HOME\n> ```",
+    "- Example:\n\n  ```sh\n  echo $HOME\n  ```",
+    "```html\n<script>example</script>\n```",
+    "`example`:::literal text",
+  ])("keeps literal code renderable: %s", (text) =>
+    expect(sourceReason(text)).toBeUndefined(),
+  );
+  it("opens the project README rendered without changing its bytes", async () => {
+    const text = readme;
+    const { store } = setup(text);
+    expect(store.get("/a.md")!.mode).toBe("rendered");
+    store.setMode("/a.md", "source");
+    store.setMode("/a.md", "rendered");
+    expect(store.get("/a.md")!.mode).toBe("rendered");
+    await store.save("/a.md");
+    expect(store.get("/a.md")!.text).toBe(text);
+    expect(store.get("/a.md")!.disk.text).toBe(text);
+    expect(dirty(store.get("/a.md")!)).toBe(false);
+  });
   it("supports ordinary GFM and restores CRLF", () => {
     expect(
       sourceReason(

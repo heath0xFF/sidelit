@@ -142,7 +142,9 @@ jobs:
 
           **This release is ad-hoc signed, not Apple-notarized.** If macOS blocks the first launch, use **System Settings → Privacy & Security → Open Anyway** for Sidelit, only if you trust this download. Do not disable Gatekeeper.
 
-          **New in 0.1.1:** signed in-app updates, a rendered column that uses 80% of its pane, editor-aware Undo/Redo (Cmd+Z / Cmd+Shift+Z), and a portable Sidelit agent skill.
+          **Fixed in 0.1.2:** normal code examples no longer disable Rendered mode. The safety check now ignores dollar signs, math-like text, and extension markers inside inline and block code. This fixes Sidelit's own README and shell examples such as `$HOME`. Real unsupported syntax outside code still uses Source. HTML examples remain inert text.
+
+          **From 0.1.1:** use **Actions → Check for Updates**, then **Install & Restart**. If a restored tab remains in Source, click Rendered after updating.
 
           **Upgrading from 0.1.0:** install this DMG once. Save your work and quit Sidelit before replacing the app. From 0.1.1 onward, Sidelit checks for updates on startup and daily; use **Install & Restart** or **Actions → Check for Updates**. Unsaved drafts use the normal Save/Discard/Cancel prompts. Failed updates keep drafts in memory. Your Markdown files and recovery data stay separate from the app.
 

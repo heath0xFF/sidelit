@@ -56,16 +56,26 @@ export function sourceReason(text: string): string | undefined {
   if (parts.unclosed)
     return "Unclosed frontmatter is preserved in Source mode.";
   text = parts.body;
-  if (/\$|\\[([]|^\s*(?:::|\[\^)/m.test(text))
-    return "Math or extension syntax is preserved in Source mode.";
   let reason: string | undefined;
+  const prose: string[] = [];
+  let end = 0;
   const visit = (node: {
     type: string;
     children?: unknown[];
     url?: string;
     lang?: string;
     meta?: string | null;
+    position?: { start: { offset?: number }; end: { offset?: number } };
   }) => {
+    if (node.type === "code" || node.type === "inlineCode") {
+      const from = node.position?.start.offset;
+      const to = node.position?.end.offset;
+      if (from !== undefined && to !== undefined) {
+        // Keep code opaque without making adjacent inline text look like a new block.
+        prose.push(text.slice(end, from), "`code`");
+        end = to;
+      }
+    }
     if (!supported.has(node.type))
       reason =
         "HTML, references, or extension syntax is preserved in Source mode.";
@@ -82,6 +92,8 @@ export function sourceReason(text: string): string | undefined {
     );
   };
   visit(parser.parse(text));
+  if (/\$|\\[([]|^\s*(?:::|\[\^)/m.test(prose.join("") + text.slice(end)))
+    return "Math or extension syntax is preserved in Source mode.";
   return reason;
 }
 export function lineEndings(text: string, original: string) {

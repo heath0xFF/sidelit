@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import plistlib
+import re
 import signal
 import shutil
 import subprocess
@@ -331,6 +332,40 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
         js('const el=document.querySelector(".ProseMirror p");el.focus();const r=document.createRange();r.selectNodeContents(el);getSelection().removeAllRanges();getSelection().addRange(r);document.execCommand("insertText",false,arguments[0])', text)
         wait(lambda: js('return !!document.querySelector(".tab.active .dirty-dot")'), 'new draft')
 
+    readme = folder / 'README.md'
+    readme.write_bytes((ROOT / 'README.md').read_bytes())
+    readme_before = readme.read_bytes()
+    readme_stamp = readme.stat().st_mtime_ns
+    launch(readme)
+    wait(lambda: js('return document.querySelector(".ProseMirror h1")?.textContent') == 'Sidelit', 'project README rendered')
+    assert not js('return !!document.querySelector(".fidelity-note") || !!document.querySelector(".tab.active .dirty-dot")')
+    click('Source')
+    wait(lambda: js('return !!document.querySelector(".monaco-editor")'), 'README source')
+    assert source_text() == readme_before.decode()
+    click('Rendered')
+    wait(lambda: js('return !!document.querySelector(".ProseMirror h1")'), 'README rendered again')
+    click('Save')
+    time.sleep(.2)
+    assert readme.read_bytes() == readme_before and readme.stat().st_mtime_ns == readme_stamp
+    rich_edit('README rendering regression check.')
+    click('Save')
+    wait(lambda: b'README rendering regression check.' in readme.read_bytes(), 'README rich save')
+    blocks = r'^```[^\n]*\n(.*?)^```[ \t]*(?:\n|$)'
+    assert re.findall(blocks, readme.read_text(), re.M | re.S) == re.findall(blocks, readme_before.decode(), re.M | re.S), 'rich edits must preserve literal shell code'
+    assert b'$HOME' in readme.read_bytes() and b'$PWD' in readme.read_bytes()
+    screenshot('readme-rendered.png')
+
+    literal = folder / 'literal-code.md'
+    literal.write_text('# Literal code\n\nUse `$HOME` and `\\\\(x\\\\)` literally.\n\n```html\n<script>window.__literalExecuted=true</script>\n```\n')
+    launch(literal)
+    wait(lambda: js('return document.querySelector(".ProseMirror h1")?.textContent') == 'Literal code', 'literal code rendered')
+    assert not js('return !!window.__literalExecuted || !!document.querySelector(".ProseMirror script")')
+    rich_edit('Literal code stays inert.')
+    click('Save')
+    wait(lambda: 'Literal code stays inert.' in literal.read_text(), 'literal code saved')
+    assert '<script>window.__literalExecuted=true</script>' in literal.read_text()
+    assert not js('return !!window.__literalExecuted')
+
     metadata = folder / 'metadata.md'
     prefix = b'---\r\ntitle: "Keep $ and <tags>"\r\n# Keep this comment\r\n---\r\n\r\n'
     metadata.write_bytes(prefix + b'# Metadata\r\n\r\nOriginal body.\r\n')
@@ -525,7 +560,7 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     wait(lambda: not js('return !!document.querySelector(".tab.active .dirty-dot")'), 'checkpoint test discarded')
     errors = errors_before_crash + js('return __errors')
     assert errors == [], errors
-    report = {'handoffSeconds': timing, 'editorReadySeconds': ready_seconds, 'warmHandoffSeconds': warm, 'workers': workers_before_crash + js('return __workers'), 'errors': errors, 'checks': 'Crepe input; Monaco input; 80% rendered column and narrow gutter; keyboard/menu undo and redo in both editors, code blocks, and search inputs; disk reload history reset; undo/redo disk adoption; read-only history guards; CRLF; no-op save; mode/tab switches; clean refresh; conflict/diff; discard/cancel; rename; delete/recreate; repeated CLI; Unicode/caller cwd; local image and alt fidelity; frontmatter; dirty close/quit cancel; save on close; task/numbered/nested/wrapped list alignment at 12–28px; local fonts; One themes; system preference; live sizing without editor remounts; opaque frontmatter rich editing; sticky Source; scoped Quick Open; background close selection; editable diff and keyboard change acceptance; stale merged-save rejection; clean change review; New/Save As UI (native selection simulated); Save As cancel/failure; recovery checkpoint, process crash, restart, conflict-safe restore (native approval simulated), and deletion'}
+    report = {'handoffSeconds': timing, 'editorReadySeconds': ready_seconds, 'warmHandoffSeconds': warm, 'workers': workers_before_crash + js('return __workers'), 'errors': errors, 'checks': 'Crepe input; Monaco input; 80% rendered column and narrow gutter; keyboard/menu undo and redo in both editors, code blocks, and search inputs; disk reload history reset; undo/redo disk adoption; read-only history guards; CRLF; no-op save; mode/tab switches; clean refresh; conflict/diff; discard/cancel; rename; delete/recreate; repeated CLI; Unicode/caller cwd; local image and alt fidelity; project README render/mode/no-op save; literal code preserved and HTML examples inert; frontmatter; dirty close/quit cancel; save on close; task/numbered/nested/wrapped list alignment at 12–28px; local fonts; One themes; system preference; live sizing without editor remounts; opaque frontmatter rich editing; sticky Source; scoped Quick Open; background close selection; editable diff and keyboard change acceptance; stale merged-save rejection; clean change review; New/Save As UI (native selection simulated); Save As cancel/failure; recovery checkpoint, process crash, restart, conflict-safe restore (native approval simulated), and deletion'}
     (OUT / 'desktop.json').write_text(json.dumps(report, indent=2))
     print(json.dumps(report, indent=2))
     # Close only the temporary documents; the app remains available for manual checks.
