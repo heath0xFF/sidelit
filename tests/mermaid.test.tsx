@@ -8,6 +8,7 @@ import { render } from 'pele';
 import { mermaidOptions, PreviewCodeBlock } from '../src/preview-mermaid';
 import { compileStandaloneMdx } from '../src/mdx';
 import { preparePreview } from '../src/preview-html';
+import readme from '../README.md?raw';
 
 async function content(source: string) {
   const code = await compileStandaloneMdx(source, undefined, 'md');
@@ -15,6 +16,13 @@ async function content(source: string) {
 }
 
 describe('Mermaid preview', () => {
+  it('renders the README review workflow within the shipped limits', () => {
+    const diagrams = [...readme.matchAll(/^```mermaid\r?\n([\s\S]*?)^```/gm)];
+    expect(diagrams).toHaveLength(1);
+    const result = render(diagrams[0][1], mermaidOptions);
+    expect(result.type).toBe('sequence');
+    expect(result.svg).toContain('Pi in Rex');
+  });
   it('renders flowcharts and sequence diagrams with no active links, images, or HTML', () => {
     for (const source of [
       'flowchart LR\n A[Read] --> B[Review]\n click A "https://example.com"',

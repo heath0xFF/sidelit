@@ -1,4 +1,5 @@
 import readme from "../README.md?raw";
+import userGuide from "../docs/user-guide.md?raw";
 import { describe, expect, it, vi } from "vitest";
 import { Documents, dirty, type Transport } from "../src/documents";
 import { sourceReason, lineEndings, frontmatter, replaceBody } from "../src/fidelity";
@@ -323,13 +324,15 @@ describe("fidelity gate", () => {
   ])("keeps literal code renderable: %s", (text) =>
     expect(sourceReason(text)).toBeUndefined(),
   );
-  it("opens the project README rendered without changing its bytes", async () => {
-    const text = readme;
+  it.each([
+    ["README", readme, true],
+    ["user guide", userGuide, false],
+  ] as const)("opens the %s in its correct rendered view without changing bytes", async (_name, text, previewOnly) => {
     const { store } = setup(text);
-    expect(store.get("/a.md")!.mode).toBe("rendered");
+    expect(store.get("/a.md")).toMatchObject({ mode: "rendered", previewOnly });
     store.setMode("/a.md", "source");
     store.setMode("/a.md", "rendered");
-    expect(store.get("/a.md")!.mode).toBe("rendered");
+    expect(store.get("/a.md")).toMatchObject({ mode: "rendered", previewOnly });
     await store.save("/a.md");
     expect(store.get("/a.md")!.text).toBe(text);
     expect(store.get("/a.md")!.disk.text).toBe(text);

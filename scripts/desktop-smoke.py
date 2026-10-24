@@ -428,26 +428,33 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
 
     readme = folder / 'README.md'
     readme.write_bytes((ROOT / 'README.md').read_bytes())
+    shutil.copytree(ROOT / 'docs/images', folder / 'docs/images', dirs_exist_ok=True)
     readme_before = readme.read_bytes()
     readme_stamp = readme.stat().st_mtime_ns
     launch(readme)
-    wait(lambda: js('return document.querySelector(".ProseMirror h1")?.textContent') == 'Sidelit', 'project README rendered')
-    assert not js('return !!document.querySelector(".fidelity-note") || !!document.querySelector(".tab.active .dirty-dot")')
+    wait(lambda: js('return !!document.querySelector(".preview-frame")') and 'Mermaid preview is read-only' in body(), 'project README diagram preview')
+    assert not js('return !!document.querySelector(".tab.active .dirty-dot")')
     click('Source')
     wait(lambda: js('return !!document.querySelector(".monaco-editor")'), 'README source')
     assert source_text() == readme_before.decode()
     click('Rendered')
-    wait(lambda: js('return !!document.querySelector(".ProseMirror h1")'), 'README rendered again')
+    wait(lambda: js('return !!document.querySelector(".preview-frame")'), 'README preview again')
     click('Save')
     time.sleep(.2)
     assert readme.read_bytes() == readme_before and readme.stat().st_mtime_ns == readme_stamp
-    rich_edit('README rendering regression check.')
-    click('Save')
-    wait(lambda: b'README rendering regression check.' in readme.read_bytes(), 'README rich save')
-    blocks = r'^```[^\n]*\n(.*?)^```[ \t]*(?:\n|$)'
-    assert re.findall(blocks, readme.read_text(), re.M | re.S) == re.findall(blocks, readme_before.decode(), re.M | re.S), 'rich edits must preserve literal shell code'
-    assert b'$HOME' in readme.read_bytes() and b'$PWD' in readme.read_bytes()
     screenshot('readme-rendered.png')
+
+    guide = folder / 'User guide.md'
+    guide.write_bytes((ROOT / 'docs/user-guide.md').read_bytes())
+    guide_before = guide.read_bytes()
+    launch(guide)
+    wait(lambda: js('return document.querySelector(".ProseMirror h1")?.textContent') == 'Using Sidelit', 'user guide rich view')
+    rich_edit('User guide rendering regression check.')
+    click('Save')
+    wait(lambda: b'User guide rendering regression check.' in guide.read_bytes(), 'user guide rich save')
+    blocks = r'^```[^\n]*\n(.*?)^```[ \t]*(?:\n|$)'
+    assert re.findall(blocks, guide.read_text(), re.M | re.S) == re.findall(blocks, guide_before.decode(), re.M | re.S), 'rich edits must preserve literal shell code'
+    assert b'$HOME' in guide.read_bytes() and b'$PWD' in guide.read_bytes()
 
     literal = folder / 'literal-code.md'
     literal.write_text('# Literal code\n\nUse `$HOME` and `\\\\(x\\\\)` literally.\n\n```html\n<script>window.__literalExecuted=true</script>\n```\n')
@@ -655,7 +662,7 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     wait(lambda: not js('return !!document.querySelector(".tab.active .dirty-dot")'), 'checkpoint test discarded')
     errors = errors_before_crash + js('return __errors')
     assert errors == [], errors
-    report = {'handoffSeconds': timing, 'editorReadySeconds': ready_seconds, 'warmHandoffSeconds': warm, 'workers': workers_before_crash + js('return __workers'), 'errors': errors, 'checks': 'Mermaid sandbox, source fallback, CRLF no-op save, themes, font size and narrow layout; Crepe input; Monaco input; 80% rendered column and narrow gutter; keyboard/menu undo and redo in both editors, code blocks, and search inputs; disk reload history reset; undo/redo disk adoption; read-only history guards; CRLF; no-op save; mode/tab switches; clean refresh; conflict/diff; discard/cancel; rename; delete/recreate; repeated CLI; Unicode/caller cwd; local image and alt fidelity; project README render/mode/no-op save; literal code preserved and HTML examples inert; frontmatter; dirty close/quit cancel; save on close; task/numbered/nested/wrapped list alignment at 12–28px; local fonts; One themes; system preference; live sizing without editor remounts; opaque frontmatter rich editing; sticky Source; scoped Quick Open; background close selection; editable diff and keyboard change acceptance; stale merged-save rejection; clean change review; New/Save As UI (native selection simulated); Save As cancel/failure; recovery checkpoint, process crash, restart, conflict-safe restore (native approval simulated), and deletion'}
+    report = {'handoffSeconds': timing, 'editorReadySeconds': ready_seconds, 'warmHandoffSeconds': warm, 'workers': workers_before_crash + js('return __workers'), 'errors': errors, 'checks': 'Mermaid sandbox, source fallback, CRLF no-op save, themes, font size and narrow layout; Crepe input; Monaco input; 80% rendered column and narrow gutter; keyboard/menu undo and redo in both editors, code blocks, and search inputs; disk reload history reset; undo/redo disk adoption; read-only history guards; CRLF; no-op save; mode/tab switches; clean refresh; conflict/diff; discard/cancel; rename; delete/recreate; repeated CLI; Unicode/caller cwd; local image and alt fidelity; project README preview/mode/no-op save; user guide rich editing; literal code preserved and HTML examples inert; frontmatter; dirty close/quit cancel; save on close; task/numbered/nested/wrapped list alignment at 12–28px; local fonts; One themes; system preference; live sizing without editor remounts; opaque frontmatter rich editing; sticky Source; scoped Quick Open; background close selection; editable diff and keyboard change acceptance; stale merged-save rejection; clean change review; New/Save As UI (native selection simulated); Save As cancel/failure; recovery checkpoint, process crash, restart, conflict-safe restore (native approval simulated), and deletion'}
     (OUT / 'desktop.json').write_text(json.dumps(report, indent=2))
     print(json.dumps(report, indent=2))
     # Close only the temporary documents; the app remains available for manual checks.

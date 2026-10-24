@@ -101,4 +101,4 @@ Sidelit also offers signed updates. The person chooses Install & Restart and han
 
 ## Development requests
 
-If asked to change Sidelit itself, switch to its source repository and read its `AGENTS.md`, `README.md`, and `VERIFICATION.md`. Read `RELEASING.md` before changing packaging or publishing a release. Do not use a `desktop-test` build for real documents or distribution.
+If asked to change Sidelit itself, switch to its source repository and read its `AGENTS.md`, `README.md`, `docs/development.md`, and `VERIFICATION.md`. Read `RELEASING.md` before changing packaging or publishing a release. Do not use a `desktop-test` build for real documents or distribution.
