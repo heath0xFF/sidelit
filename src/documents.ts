@@ -10,6 +10,7 @@ export interface Document {
   revision: number;
   mode: Mode;
   reason?: string;
+  previewOnly?: boolean;
   review?: Snapshot;
   pending?: { snapshot: Snapshot | null; error: string | null };
   saving: boolean;
@@ -17,10 +18,12 @@ export interface Document {
 }
 export const dirty = (doc: Document) => doc.text !== doc.disk.text;
 function rendering(path: string, text: string, mode: Mode) {
-  const reason = mode === "rendered" && formatForPath(path) === "markdown"
+  const editReason = mode === "rendered" && formatForPath(path) === "markdown"
     ? sourceReason(text)
     : undefined;
-  return { mode: reason ? "source" as const : mode, reason };
+  // Mermaid can be read in the sandbox, but must not enter the rich editor.
+  const reason = editReason ? sourceReason(text, true) : undefined;
+  return { mode: reason ? "source" as const : mode, reason, previewOnly: !!editReason && !reason };
 }
 export interface Transport {
   read(path: string): Promise<Snapshot>;

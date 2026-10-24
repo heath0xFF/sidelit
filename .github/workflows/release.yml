@@ -142,15 +142,15 @@ jobs:
 
           **This release is ad-hoc signed, not Apple-notarized.** If macOS blocks the first launch, use **System Settings → Privacy & Security → Open Anyway** for Sidelit, only if you trust this download. Do not disable Gatekeeper.
 
-          **New in 0.2.0: visual previews and feedback beside Rex, Pi, and Neovim.**
+          **New in 0.3.0: offline Mermaid diagram previews with Pele.**
 
-          - Render Markdown, HTML, and real standalone MDX, or connect to an existing local development server. Local assets refresh automatically; previews preserve reading position across refreshes.
-          - Select a passage and choose **Explain / Review / Edit**, or inspect an element. Captured context stays attached, warns when stale or unsaved, and can be revealed again. Hiding a request or changing tabs retains its draft.
-          - Send contextual feedback to an existing Pi session through the bundled extension, with native busy-session queuing, duplicate-safe retries, and separate receipt/acceptance states. Answers stay in Pi; **Show in Rex** returns to its terminal.
-          - Run `sidelit setup --pi --skill`, then `/reload` and `/sidelit-status` in the intended Pi session. Use `sidelit doctor --project /absolute/project/path --json` for diagnostics. No Rex plugin or embedded terminal is needed.
-          - Enjoy compact Rex-inspired dark/light styling. Markdown opens for reading with explicit **Edit**; Monaco Source editing and unsaved-change protections remain available.
+          - Read Mermaid diagrams beside the prose in Markdown and MDX previews, with dark/light themes, live text sizing, and zoom controls for diagrams that shrink to fit.
+          - Markdown files with diagrams open in a read-only Rendered preview. Use **Source** to edit the document; mode switches and no-op Save preserve the original bytes.
+          - Expand **Diagram source** to read the code. Invalid or over-limit diagrams show their source and an error without hiding the rest of the document.
+          - Diagram SVG stays in the isolated preview frame. Diagram links and images are disabled; source, edge, output, and per-page limits bound rendering work. Other unsupported Markdown syntax still uses Source.
+          - Try `samples/Diagrams.md` from the repository. Existing Markdown editing, HTML/MDX previews, and contextual Pi feedback remain available.
 
-          Verified with 89 frontend/bridge tests, 23 Rust tests, packaged editor and selection checks, and a real Pi runtime in a separate Rex pane using an offline test model and real file-edit tool. Physical keyboard traversal, VoiceOver, native dialogs, Intel runtime, and older macOS versions still need manual checks.
+          Verified with 101 frontend/bridge tests, 23 Rust tests, and the full packaged macOS editor suite, including diagram isolation, error fallback, theme/text-size changes, narrow layout, and CRLF no-op saves. Full Mermaid syntax compatibility, VoiceOver, native dialogs, Intel runtime, and older macOS versions still need manual checks. Pele uses its own layout; size limits are not a CPU time limit.
 
           Requests are currently one at a time and remain in memory only until app exit. Batch review notes are tracked in `ROADMAP.md`. Standalone MDX imports require your development server; server inspection requires the opt-in preview bridge. Explain/Review express intent to Pi, not an edit-permission boundary. See the README for setup and security details.
 

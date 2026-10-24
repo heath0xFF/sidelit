@@ -1,4 +1,5 @@
 import type { PreviewAsset } from './api';
+import { frontmatter, sourceReason } from './fidelity';
 import bridge from '../extensions/preview-bridge/sidelit.js?raw';
 import proseFont from '@fontsource-variable/ibm-plex-sans/files/ibm-plex-sans-latin-wght-normal.woff2?inline';
 import italicFont from '@fontsource-variable/ibm-plex-sans/files/ibm-plex-sans-latin-wght-italic.woff2?inline';
@@ -16,13 +17,24 @@ h1,h2,h3{line-height:1.25}h1{font-size:2em}h2{margin-top:1.6em}a{color:#b4a7ff}i
 pre,code{font-family:SidelitMono,ui-monospace,SFMono-Regular,monospace}pre{padding:16px;overflow:auto;background:#30323e;border-radius:6px}code{font-size:.95em}
 table{border-collapse:collapse}th,td{border:1px solid #4b5260;padding:6px 12px}th{text-align:left}blockquote{margin-left:0;padding-left:16px;border-left:1px solid #4b5260}
 .sidelit-callout,.sidelit-card{padding:12px 16px;border:1px solid #4b5260;margin:16px 0}.sidelit-badge{padding:2px 6px;background:#3e4451}.sidelit-stack{display:grid;gap:12px}
+.sidelit-diagram{margin:24px 0;--pele-bg:#333643;--pele-fg:#d5d6df;--pele-muted:#a5a7b8;--pele-line:#a5a7b8;--pele-surface:#30323e;--pele-surface-alt:#3a3d4b;--pele-border:#55596b;--pele-accent:#b4a7ff;--pele-error:#e06c75;--pele-font:SidelitProse,sans-serif;--pele-font-mono:SidelitMono,monospace}
+html[data-theme=light] .sidelit-diagram{--pele-bg:#fafafd;--pele-fg:#363744;--pele-muted:#686a7c;--pele-line:#686a7c;--pele-surface:#eeeef4;--pele-surface-alt:#e4e4ec;--pele-border:#c7c8d6;--pele-accent:#6346c7;--pele-error:#b83a34}
+.sidelit-diagram>div{overflow:auto}.sidelit-diagram summary{cursor:pointer;color:var(--pele-muted)}.sidelit-diagram summary:focus-visible{outline:2px solid var(--pele-accent);outline-offset:2px}
+.sidelit-diagram [role=status]{color:var(--pele-error);overflow-wrap:anywhere}
 .tok-keyword{color:#d797e6}.tok-string{color:#98c379}.tok-number,.tok-bool{color:#d19a66}.tok-comment{color:#a5a7b8}.tok-variableName{color:#f08c95}.tok-typeName{color:#e5c07b}
 `;
 const isLocal = (ref: string) => !!ref && !/^(?:[a-z][\w+.-]*:|\/\/|#)/i.test(ref);
 const fileUrl = (path: string) => 'file://' + path.split('/').map(encodeURIComponent).join('/');
 const safeScript = (script: string) => script.replace(/<\/script/gi, '<\\/script');
 
-export async function preparePreview(source: string, path: string, format: 'html' | 'mdx', scripts: boolean, runtime: string, read: ReadAsset) {
+export async function preparePreview(source: string, path: string, format: 'html' | 'mdx' | 'markdown', scripts: boolean, runtime: string, read: ReadAsset) {
+  const markdown = format === 'markdown';
+  if (markdown) {
+    const reason = sourceReason(source, true);
+    if (reason) throw new Error(reason);
+    source = frontmatter(source).body;
+  }
+  const compiled = format !== 'html';
   let count = 0;
   let assetBytes = 0;
   const assets = new Map<string, Promise<PreviewAsset>>();
@@ -59,8 +71,8 @@ export async function preparePreview(source: string, path: string, format: 'html
     return text;
   };
   let code = '';
-  if (format === 'mdx') code = await (await import('./mdx')).compileStandaloneMdx(source, ref => image(ref));
-  const parsed = new DOMParser().parseFromString(format === 'mdx' ? '<div id="sidelit-root"></div>' : source, 'text/html');
+  if (compiled) code = await (await import('./mdx')).compileStandaloneMdx(source, ref => image(ref), markdown ? 'md' : 'mdx');
+  const parsed = new DOMParser().parseFromString(compiled ? '<div id="sidelit-root"></div>' : source, 'text/html');
   for (const node of [...parsed.querySelectorAll('base,iframe,frame,frameset,object,embed,portal,meta[http-equiv]')]) node.remove();
   for (const node of [...parsed.querySelectorAll('*')]) {
     for (const attr of [...node.attributes]) {
@@ -102,11 +114,11 @@ export async function preparePreview(source: string, path: string, format: 'html
   for (const element of [...parsed.querySelectorAll('[style]')]) element.setAttribute('style', await css(element.getAttribute('style')!, path));
   const nonce = crypto.randomUUID().replaceAll('-', '');
   const csp = parsed.createElement('meta'); csp.httpEquiv = 'Content-Security-Policy';
-  csp.content = `default-src 'none'; script-src ${scripts || format === 'mdx' ? "'unsafe-inline' 'unsafe-eval'" : "'nonce-" + nonce + "'"}; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`;
+  csp.content = `default-src 'none'; script-src ${scripts || format === 'mdx' ? "'unsafe-inline' 'unsafe-eval'" : "'nonce-" + nonce + "'" + (markdown ? " 'unsafe-eval'" : "")}; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`;
   parsed.head.prepend(csp);
   const addScript = (text: string, first = false) => { const script = parsed.createElement('script'); script.setAttribute('nonce', nonce); script.textContent = safeScript(text); if (first) csp.after(script); else parsed.body.append(script); };
   addScript(bridge, true);
-  if (format === 'mdx') {
+  if (compiled) {
     const style = parsed.createElement('style'); style.textContent = mdxStyle; parsed.head.append(style);
     const data = parsed.createElement('script'); data.id = 'sidelit-mdx'; data.type = 'application/json'; data.textContent = JSON.stringify({ code }).replaceAll('<', '\\u003c'); parsed.body.append(data);
     addScript(runtime);

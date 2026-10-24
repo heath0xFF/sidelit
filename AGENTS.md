@@ -12,7 +12,7 @@ Tauri 2 / Rust desktop app. React + TypeScript + Vite frontend. pnpm only. No El
 - `src/documents.ts`: canonical buffers, baseline snapshots, revisions, pending external versions.
 - `src/Rich.tsx`: Crepe transactions; `Source.tsx`: lazy Monaco, local worker, model lifecycle.
 - `src/inspection.ts`, `selection-dom.ts`, `SelectionActions.tsx`, `FeedbackComposer.tsx`: bounded selection snapshots, verified highlights, Explain/Review/Edit and in-memory request drafts. `Preview.tsx` hosts isolated HTML/MDX and opt-in dev-server inspection; `agents.rs` and `extensions/pi-sidelit/` own local delivery.
-- `src/fidelity.ts`: frontmatter preservation and a conservative Source-only gate at Rendered entry.
+- `src/fidelity.ts`: frontmatter preservation and a conservative gate at Rendered entry. Mermaid-only exceptions use a read-only sandbox, never Crepe; `preview-mermaid.tsx` renders bounded Pele diagrams without links or images.
 - `src/closing.ts`, `recovery.ts`: live close approvals and serialized, coalesced checkpoints.
 - `src/appearance.ts`: bounded font-size settings and System/One Light/One Dark preference resolution. `style.css` owns shared palette tokens; fonts and OFL notices are bundled offline.
 - `src/App.tsx`: tabs, workspace, tree, dialogs, keyboard actions. Route native Undo/Redo to the active editor, not WebKit's undo manager; disk reloads clear editor history.

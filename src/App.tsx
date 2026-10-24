@@ -816,7 +816,7 @@ export default function App() {
           </div>
         </details>
         <div className="toolbar-space" />
-        {doc?.format === 'markdown' && mode === 'rendered' && !serverUrl && <button aria-label="Edit rendered Markdown" aria-pressed={editing} onClick={() => setEditing(value => !value)}>{editing ? 'Done editing' : 'Edit'}</button>}
+        {doc?.format === 'markdown' && !doc.previewOnly && mode === 'rendered' && !serverUrl && <button aria-label="Edit rendered Markdown" aria-pressed={editing} onClick={() => setEditing(value => !value)}>{editing ? 'Done editing' : 'Edit'}</button>}
         {doc && !serverUrl && (
           <div className="mode-switch" aria-label="Editing mode">
             <button
@@ -997,6 +997,7 @@ export default function App() {
                 <button onClick={() => documents.update(doc.path, { review: undefined })}>Dismiss</button>
               </section>}
               {mode === "rendered" && /^(---|\+\+\+)[ \t]*\r?\n/.test(doc.text) && !comparison && !serverUrl && <div className="fidelity-note">Frontmatter is kept unchanged. Use Source to edit metadata.</div>}
+              {doc.previewOnly && mode === "rendered" && !comparison && !serverUrl && <div className="fidelity-note">Mermaid preview is read-only. Use Source to edit this document.</div>}
               {reason && !comparison && !serverUrl && (
                 <div className="fidelity-note">
                   {reason} No content has been removed.
@@ -1062,7 +1063,7 @@ export default function App() {
                     onChange={(text) => documents.edit(doc.path, text)}
                   />
                 </Suspense>
-              ) : doc.format === "markdown" ? (
+              ) : doc.format === "markdown" && !doc.previewOnly ? (
                 <Rich
                   key={doc.path}
                   path={doc.path}

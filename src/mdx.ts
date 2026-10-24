@@ -11,9 +11,9 @@ function visit(value: unknown, fn: (node: any) => void) {
   for (const [key, child] of Object.entries(node)) if (!['position', 'loc'].includes(key)) visit(child, fn);
 }
 
-export async function compileStandaloneMdx(source: string, asset: (reference: string) => Promise<string> = async ref => ref) {
+export async function compileStandaloneMdx(source: string, asset: (reference: string) => Promise<string> = async ref => ref, format: 'md' | 'mdx' = 'mdx') {
   const result = await compile(source, {
-    outputFormat: 'function-body', development: false, remarkPlugins: [remarkGfm, () => async (tree: unknown) => {
+    format, outputFormat: 'function-body', development: false, remarkPlugins: [remarkGfm, () => async (tree: unknown) => {
       const jobs: Promise<void>[] = [];
       visit(tree, node => {
         if (node.type === 'ImportDeclaration' || node.type === 'ImportExpression' || node.type === 'ExportAllDeclaration' || (node.type === 'ExportNamedDeclaration' && node.source)) {
@@ -25,9 +25,14 @@ export async function compileStandaloneMdx(source: string, asset: (reference: st
       await Promise.all(jobs);
     }], rehypePlugins: [() => async (tree: any) => {
       const jobs: Promise<void>[] = [];
+      let diagrams = 0;
       visit(tree, node => {
         if (node.type !== 'element' || node.tagName !== 'code') return;
         const language = node.properties?.className?.find((v: string) => v.startsWith('language-'))?.slice(9);
+        if (language === 'mermaid') {
+          node.properties['data-mermaid'] = ++diagrams <= 32 ? 'render' : 'limit';
+          return;
+        }
         const description = languages.find(l => l.name.toLowerCase() === language?.toLowerCase() || l.alias.includes(language));
         if (!description) return;
         jobs.push(description.load().then(support => {

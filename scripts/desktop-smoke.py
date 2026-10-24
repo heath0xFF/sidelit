@@ -358,6 +358,68 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     click('Save')
     time.sleep(.4)
     assert fixture.read_bytes() == initial
+    # Inject the probe into test publications, not into shipping preview code.
+    probe = '''addEventListener('message',e=>{if(e.data?.source!=='mermaid-test')return;
+      if(Number.isInteger(e.data.scroll)){document.dispatchEvent(new WheelEvent('wheel'));document.querySelectorAll('.sidelit-diagram')[e.data.scroll]?.scrollIntoView()}
+      let parentBlocked=false;try{void parent.document.body}catch{parentBlocked=true}
+      const svg=document.querySelector('.sidelit-diagram svg'),label=svg?.querySelector('text');
+      parent.postMessage({source:'mermaid-test-result',diagrams:document.querySelectorAll('.sidelit-diagram svg').length,
+        text:document.body.innerText,theme:document.documentElement.dataset.theme,font:getComputedStyle(document.body).fontSize,
+        labelSize:label&&getComputedStyle(label).fontSize,color:label&&getComputedStyle(label).fill,
+        width:document.documentElement.scrollWidth,viewport:innerWidth,ipc:typeof window.__TAURI_INTERNALS__,parentBlocked,
+        url:location.href,diagramTop:svg?.getBoundingClientRect().top,errorTop:document.querySelector('.sidelit-diagram [role=status]')?.getBoundingClientRect().top,errors:document.querySelectorAll('.sidelit-diagram [role=status]').length},'*');});'''
+    js('''window.__mermaidMetrics=null;window.__mermaidReady=false;
+      window.__mermaidListener=e=>{if(e.source===document.querySelector('.preview-frame')?.contentWindow&&e.data?.source==='mermaid-test-result')window.__mermaidMetrics=e.data};
+      addEventListener('message',window.__mermaidListener);
+      const probe=arguments[0];import(document.querySelector('script[type=module]').src).then(m=>{
+        window.__mermaidApi=Object.values(m).find(v=>v&&typeof v.publishPreview==='function');
+        window.__mermaidPublish=__mermaidApi.publishPreview;
+        __mermaidApi.publishPreview=(id,html)=>{const nonce=/nonce="([^"]+)"/.exec(html)?.[1];if(!nonce)throw Error('Missing preview nonce');
+          return __mermaidPublish(id,html.replace('</body>','<script nonce="'+nonce+'">'+probe+'</script></body>'))};
+        window.__mermaidReady=true})''', probe)
+    wait(lambda: js('return window.__mermaidReady'), 'diagram test transport')
+    try:
+        diagrams = folder / 'Diagrams.md'
+        diagrams.write_bytes(diagrams.read_bytes().replace(b'\n', b'\r\n'))
+        diagram_bytes, diagram_stamp = diagrams.read_bytes(), diagrams.stat().st_mtime_ns
+        launch(diagrams)
+        wait(lambda: 'Mermaid preview is read-only' in body(), 'read-only diagram preview')
+        assert not js('return !!document.querySelector(".ProseMirror,button[aria-label=\\"Edit rendered Markdown\\"]")')
+        assert js('return document.querySelector(".preview-frame").getAttribute("sandbox")') == 'allow-scripts'
+        def diagram_metrics():
+            js('document.querySelector(".preview-frame")?.contentWindow.postMessage({source:"mermaid-test"},"*")')
+            return js('return window.__mermaidMetrics')
+        rendered = wait(lambda: (m if (m := diagram_metrics()) and m['diagrams'] == 2 and m['errors'] == 1 else None), 'two diagrams and invalid-source fallback')
+        assert rendered['parentBlocked'] and rendered['ipc'] == 'undefined', rendered
+        assert 'not a diagram' in rendered['text'] and 'Use Source' in rendered['text'], rendered
+        address = rendered['url']
+        set_theme('dark')
+        dark_diagram = wait(lambda: (m if (m := diagram_metrics()) and m['theme'] == 'dark' else None), 'dark diagrams')
+        request(f'/session/{session}/window/rect', {'width': 1180, 'height': 820})
+        screenshot('mermaid-dark.png')
+        set_theme('light')
+        set_size(24)
+        light_diagram = wait(lambda: (m if (m := diagram_metrics()) and m['theme'] == 'light' and m['font'] == '24px' and m['labelSize'] != dark_diagram['labelSize'] else None), 'live diagram theme and font size')
+        assert light_diagram['url'] == address and light_diagram['color'] != dark_diagram['color'], light_diagram
+        request(f'/session/{session}/window/rect', {'width': 720, 'height': 630})
+        js('document.querySelector(".preview-frame").contentWindow.postMessage({source:"mermaid-test",scroll:0},"*")')
+        wait(lambda: (m := diagram_metrics()) and m['width'] <= m['viewport'] + 1 and abs(m['diagramTop']) <= 2, 'narrow diagram without page overflow')
+        screenshot('mermaid-light-narrow.png')
+        js('document.querySelector(".preview-frame").contentWindow.postMessage({source:"mermaid-test",scroll:2},"*")')
+        wait(lambda: (m := diagram_metrics()) and 0 <= m['errorTop'] < 300, 'visible invalid diagram source')
+        screenshot('mermaid-invalid.png')
+        set_size(16)
+        click('Source')
+        wait(lambda: js('return !!document.querySelector(".monaco-editor")'), 'diagram source editor')
+        assert source_text().replace('\r\n', '\n') == diagram_bytes.decode().replace('\r\n', '\n')
+        click('Rendered')
+        wait(lambda: 'Mermaid preview is read-only' in body(), 'return to diagram preview')
+        click('Save')
+        time.sleep(.2)
+        assert diagrams.read_bytes() == diagram_bytes and diagrams.stat().st_mtime_ns == diagram_stamp
+        assert not js('return !!document.querySelector(".tab.active .dirty-dot")')
+    finally:
+        js('window.__mermaidApi.publishPreview=window.__mermaidPublish;removeEventListener("message",window.__mermaidListener)')
     def rich_edit(text):
         wait(lambda: js('return !!document.querySelector(".ProseMirror p")'), 'editable paragraph')
         edit_rendered()
@@ -593,7 +655,7 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     wait(lambda: not js('return !!document.querySelector(".tab.active .dirty-dot")'), 'checkpoint test discarded')
     errors = errors_before_crash + js('return __errors')
     assert errors == [], errors
-    report = {'handoffSeconds': timing, 'editorReadySeconds': ready_seconds, 'warmHandoffSeconds': warm, 'workers': workers_before_crash + js('return __workers'), 'errors': errors, 'checks': 'Crepe input; Monaco input; 80% rendered column and narrow gutter; keyboard/menu undo and redo in both editors, code blocks, and search inputs; disk reload history reset; undo/redo disk adoption; read-only history guards; CRLF; no-op save; mode/tab switches; clean refresh; conflict/diff; discard/cancel; rename; delete/recreate; repeated CLI; Unicode/caller cwd; local image and alt fidelity; project README render/mode/no-op save; literal code preserved and HTML examples inert; frontmatter; dirty close/quit cancel; save on close; task/numbered/nested/wrapped list alignment at 12–28px; local fonts; One themes; system preference; live sizing without editor remounts; opaque frontmatter rich editing; sticky Source; scoped Quick Open; background close selection; editable diff and keyboard change acceptance; stale merged-save rejection; clean change review; New/Save As UI (native selection simulated); Save As cancel/failure; recovery checkpoint, process crash, restart, conflict-safe restore (native approval simulated), and deletion'}
+    report = {'handoffSeconds': timing, 'editorReadySeconds': ready_seconds, 'warmHandoffSeconds': warm, 'workers': workers_before_crash + js('return __workers'), 'errors': errors, 'checks': 'Mermaid sandbox, source fallback, CRLF no-op save, themes, font size and narrow layout; Crepe input; Monaco input; 80% rendered column and narrow gutter; keyboard/menu undo and redo in both editors, code blocks, and search inputs; disk reload history reset; undo/redo disk adoption; read-only history guards; CRLF; no-op save; mode/tab switches; clean refresh; conflict/diff; discard/cancel; rename; delete/recreate; repeated CLI; Unicode/caller cwd; local image and alt fidelity; project README render/mode/no-op save; literal code preserved and HTML examples inert; frontmatter; dirty close/quit cancel; save on close; task/numbered/nested/wrapped list alignment at 12–28px; local fonts; One themes; system preference; live sizing without editor remounts; opaque frontmatter rich editing; sticky Source; scoped Quick Open; background close selection; editable diff and keyboard change acceptance; stale merged-save rejection; clean change review; New/Save As UI (native selection simulated); Save As cancel/failure; recovery checkpoint, process crash, restart, conflict-safe restore (native approval simulated), and deletion'}
     (OUT / 'desktop.json').write_text(json.dumps(report, indent=2))
     print(json.dumps(report, indent=2))
     # Close only the temporary documents; the app remains available for manual checks.

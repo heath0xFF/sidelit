@@ -1,5 +1,37 @@
 # Verification — v0.1
 
+## v0.3.0 — Mermaid previews — 2026-10-24
+
+Pele 1.9.0 renders fenced Mermaid blocks offline in the opaque-origin preview.
+Markdown files with diagrams stay read-only in Rendered mode and editable in
+Source. The other fidelity checks remain in place. MDX shares the renderer.
+
+Verified in this pass:
+
+- TypeScript, **101 frontend/bridge tests**, **23 Rust tests**, and frontend build.
+- Full packaged `scripts/desktop-smoke.py`, with new checks for two diagram types,
+  invalid-source fallback, no parent DOM or native API access, live themes and
+  font size, narrow layout, CRLF preservation, and no-op Save modification time.
+  The test injects its probe through the test transport, not shipping code.
+- Unit tests for disabled diagram links/images, inert HTML labels and Markdown
+  expressions, source/edge/output limits, the 32-diagram cap, frontmatter,
+  mixed unsupported syntax, dirty drafts, and external refresh.
+- Wide dark, narrow light, and error-state captures reviewed in-thread:
+  `test-results/mermaid-dark.png`, `mermaid-light-narrow.png`, and
+  `mermaid-invalid.png`. No separate reviewer was available. The scoped review
+  result is **ship**; existing MDX palette drift was not changed.
+- Ordinary app bundle rebuilt without `desktop-test` during feature checks.
+  Release preparation sets all three manifests and the Cargo lockfile to 0.3.0;
+  frozen pnpm install, type checks, all tests, and Rust format/check pass again.
+- The README image at `docs/images/sidelit.png` is an actual packaged 0.3.0
+  WKWebView capture, with demonstration content and no user documents. It was
+  checked at 1180×850 logical pixels and includes embedded capture provenance.
+  No installation into `/Applications` was performed.
+
+Limits: full Mermaid syntax compatibility and VoiceOver were not checked.
+Pele uses its own layout. Diagram size limits do not impose a CPU time limit;
+complex input can still delay rendering.
+
 ## v0.2.0 release preparation — 2026-10-23
 
 All manifests and the Cargo lockfile agree on 0.2.0. Frozen pnpm installation,

@@ -38,6 +38,9 @@ importers:
       monaco-editor:
         specifier: 0.57.0
         version: 0.57.0
+      pele:
+        specifier: 1.9.0
+        version: 1.9.0
       react:
         specifier: ^19.2.0
         version: 19.3.0
@@ -1158,6 +1161,10 @@ packages:
 
   pathe@2.0.3:
     resolution: {integrity: sha512-WUjGcAqP1gQacoQe+OBJsFA7Ld4DyXuUIjZ5cc75cLHvJ7dtNsTugphxIADwspS+AraAUePCKrSVtPLFj/F88w==}
+
+  pele@1.9.0:
+    resolution: {integrity: sha512-KUmBt7P5JduVKQaP6FKfXiRgH3LBVIKsmdgPJZU7jD3ye6F+Z8fbms+OjivE7rWY09Qx+5X65VKe/9ywKFJ9Sw==}
+    engines: {node: '>=20'}
 
   picocolors@1.1.1:
     resolution: {integrity: sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA==}
@@ -3242,6 +3249,8 @@ snapshots:
       is-hexadecimal: 2.0.1
 
   pathe@2.0.3: {}
+
+  pele@1.9.0: {}
 
   picocolors@1.1.1: {}
 

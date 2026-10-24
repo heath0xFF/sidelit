@@ -46,7 +46,7 @@ export function replaceBody(original: string, body: string) {
   return prefix + separator + lineEndings(body, original);
 }
 
-export function sourceReason(text: string): string | undefined {
+export function sourceReason(text: string, allowDiagrams = false): string | undefined {
   // Bound rich-editor work before parsing; Source can handle much larger files.
   if (text.length > 256 * 1024)
     return "Large documents use Source for responsive editing.";
@@ -79,7 +79,7 @@ export function sourceReason(text: string): string | undefined {
     if (!supported.has(node.type))
       reason =
         "HTML, references, or extension syntax is preserved in Source mode.";
-    if (node.type === "code" && (node.lang === "mermaid" || node.meta))
+    if (node.type === "code" && ((!allowDiagrams && node.lang === "mermaid") || node.meta))
       reason = "Diagram or code metadata is preserved in Source mode.";
     if (
       node.url &&

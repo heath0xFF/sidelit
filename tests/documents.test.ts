@@ -256,6 +256,44 @@ describe("frontmatter", () => {
 });
 
 describe("fidelity gate", () => {
+  const diagram = "---\r\ntitle: Keep\r\n---\r\n\r\n# Plan\r\n\r\n```mermaid\r\nflowchart LR\r\n A --> B\r\n```\r\n";
+  it("previews Mermaid read-only without changing bytes, drafts, or save baselines", async () => {
+    const { store, disk } = setup(diagram);
+    expect(store.get('/a.md')).toMatchObject({ mode: 'rendered', previewOnly: true, revision: 0 });
+    expect(sourceReason(diagram)).toBeTruthy();
+    expect(sourceReason(diagram, true)).toBeUndefined();
+    store.setMode('/a.md', 'source');
+    store.setMode('/a.md', 'rendered');
+    expect(await store.save('/a.md')).toBe(true);
+    expect(store.get('/a.md')).toMatchObject({ text: diagram, disk: snap(diagram), revision: 0, previewOnly: true });
+    store.setMode('/a.md', 'source');
+    store.edit('/a.md', diagram.replace('A --> B', 'A --> C'));
+    store.setMode('/a.md', 'rendered');
+    disk(diagram.replace('A --> B', 'A --> D'));
+    await store.refresh('/a.md');
+    expect(store.get('/a.md')!.text).toContain('A --> C');
+    expect(store.get('/a.md')!.pending?.snapshot?.text).toContain('A --> D');
+    expect(dirty(store.get('/a.md')!)).toBe(true);
+  });
+  it.each(['<script>bad()</script>', '$$x$$', '[x][ref]\n\n[ref]: https://example.com', '```mermaid title=Keep\ngraph LR; A-->B\n```'])('keeps the other fidelity checks with Mermaid: %s', extra => {
+    const { store } = setup(diagram + '\r\n' + extra);
+    expect(store.get('/a.md')).toMatchObject({ mode: 'source', previewOnly: false });
+    expect(sourceReason(diagram + extra, true)).toBeTruthy();
+  });
+  it('rechecks preview-only mode on clean disk refresh and explicit mode entry', async () => {
+    const { store, disk } = setup('# Plain');
+    disk(diagram);
+    await store.refresh('/a.md');
+    expect(store.get('/a.md')).toMatchObject({ mode: 'rendered', previewOnly: true });
+    disk('# Plain again');
+    await store.refresh('/a.md');
+    expect(store.get('/a.md')).toMatchObject({ mode: 'rendered', previewOnly: false });
+    store.setMode('/a.md', 'source');
+    store.edit('/a.md', diagram);
+    expect(store.get('/a.md')!.mode).toBe('source');
+    store.setMode('/a.md', 'rendered');
+    expect(store.get('/a.md')!.previewOnly).toBe(true);
+  });
   it.each([
     "---\ntitle: Unclosed\n",
     "<div>hello</div>",

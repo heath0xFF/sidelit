@@ -7,7 +7,7 @@ import { parsePreviewPosition, previewPosition, rememberPreviewPosition } from '
 import runtime from '../public/preview-runtime/runtime.js?raw';
 
 export default function Preview({ path, source = '', format, url, inspect, onText, onElement, onError, refresh = 0, onDismiss, onShortcut, dark = true, fontSize = 16, attachment, reveal = 0 }: {
-  path?: string; source?: string; format: 'html' | 'mdx' | 'url'; url?: string;
+  path?: string; source?: string; format: 'html' | 'mdx' | 'markdown' | 'url'; url?: string;
   inspect: boolean; onText: (value: SelectionContext | null) => void; onElement: (value: SelectionContext) => void;
   onError: (error: unknown) => void; refresh?: number; onDismiss?: () => void; onShortcut?: (key: string) => void;
   dark?: boolean; fontSize?: number;
@@ -32,7 +32,7 @@ export default function Preview({ path, source = '', format, url, inspect, onTex
   const allowScripts = !!path && trustedPath === path;
   const connect = () => {
     const enabled = !remote || bridgeEnabled;
-    frame.current?.contentWindow?.postMessage({ source: 'sidelit-host', token: id, enabled, inspect: enabled && inspect, attachment: attachment ?? null, position: enabled ? previewPosition(positionKey) : undefined, appearance: format === 'mdx' ? { dark, fontSize } : undefined }, remote && url ? new URL(url).origin : '*');
+    frame.current?.contentWindow?.postMessage({ source: 'sidelit-host', token: id, enabled, inspect: enabled && inspect, attachment: attachment ?? null, position: enabled ? previewPosition(positionKey) : undefined, appearance: format === 'mdx' || format === 'markdown' ? { dark, fontSize } : undefined }, remote && url ? new URL(url).origin : '*');
   };
   useEffect(() => {
     let alive = true; setReady(false); setError(''); setWarnings([]);

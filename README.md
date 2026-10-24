@@ -2,6 +2,8 @@
 
 Rendered context, beside your terminal. **Sidelit is a working name.**
 
+![Sidelit in dark mode showing a Markdown document with a Mermaid save-flow diagram and review checklist.](docs/images/sidelit.png)
+
 An open-source desktop visual companion for developers who work in Rex, Pi, and Neovim. Open Markdown, HTML, or MDX from your terminal, inspect the rendered result, send contextual feedback to an existing Pi session, and see file changes refresh without losing a dirty draft.
 
 Tauri 2 uses the operating system's webview. There is **no Electron, bundled Node.js, or Node sidecar**. Node and pnpm are build tools only.
@@ -230,7 +232,7 @@ Each open file has one canonical text buffer, a disk snapshot and SHA-256 hash, 
 
 - Opening, focusing, changing tabs or modes, and no-op Save do not rewrite a file. Crepe does not serialize its initial document into the buffer.
 - A real rich edit can normalize supported syntax: list markers, whitespace, tables, or fences. **Arbitrary Markdown round trips are not byte-perfect.** Use Source for exact syntax control. Undoing back to the loaded rendered document restores its original Markdown bytes.
-- YAML (`---`) and TOML (`+++`) frontmatter stays byte-for-byte unchanged while you edit the rendered body. Use Source to edit metadata. Unclosed frontmatter, raw HTML, reference syntax, math, Mermaid, code metadata, and recognized extensions use Source with an explanation. The conservative gate can also route ordinary dollar signs or large documents to Source. Source stays selected until you explicitly change mode.
+- YAML (`---`) and TOML (`+++`) frontmatter stays byte-for-byte unchanged while you edit the rendered body. Use Source to edit metadata. Markdown with Mermaid blocks uses a read-only Rendered preview; edit the document in Source. Unclosed frontmatter, raw HTML, reference syntax, math, code metadata, and recognized extensions still use Source with an explanation. The conservative gate can also route ordinary dollar signs or large documents to Source. Source stays selected until you explicitly change mode.
 - UTF-8 and uniform LF/CRLF are supported. Rich edits preserve uniform CRLF. Mixed line endings can normalize after an edit.
 - A clean buffer refreshes after an external change. **Review changes** shows its previous disk version beside the current text, both read-only. Only the latest previous version is kept in memory.
 - A dirty buffer keeps its draft and shows **Compare**, **Reload from Disk**, and **Save Copy**. Reload asks before discarding a draft.
@@ -242,6 +244,17 @@ Each open file has one canonical text buffer, a disk snapshot and SHA-256 hash, 
 - Close and Quit block new UI actions while checking live document revisions. A changed draft or an unfinished Save stops the close rather than using an old approval.
 
 Optimistic checks are **not a filesystem lock**. An arbitrary writer can still race the final check and replacement. Keep version control or backups for important work.
+
+### Mermaid diagrams
+
+Fenced `mermaid` blocks render offline with [Pele](https://github.com/obsidianmd/pele) in the isolated preview frame. Markdown files with diagrams are read-only in Rendered mode; Source remains editable. MDX previews also render Mermaid blocks. The original Markdown is not rewritten.
+
+- Expand **Diagram source** to read or select the diagram code. Failed diagrams show their source and an error; the surrounding prose stays visible.
+- Diagrams follow the theme and text size. Links, external images, custom icons, and math renderers are not enabled.
+- Each page renders at most 32 diagrams. Each diagram is limited to 20,000 source characters, 500 flowchart edges, and 1,000,000 SVG characters. These bounds are not a CPU time limit.
+- Pele uses its own layout; it does not promise the same appearance as Mermaid.js.
+
+Try `samples/Diagrams.md`. Other unsupported Markdown syntax still uses Source, even when the document contains diagrams.
 
 ### Session and crash recovery
 
@@ -261,7 +274,7 @@ Local PNG, JPEG, GIF, and WebP images are loaded through a bounded Rust command.
 
 Raw HTML and MDX are never executed in Sidelit's privileged webview. Rich Markdown paste is restricted to the editor's schema. Rust accepts only HTTP, HTTPS, mailto, and confirmed local document links. New webview windows are denied. The main webview CSP allows bundled scripts/workers, inline editor styles, and scoped image data, not remote script origins or `unsafe-eval`.
 
-Static previews are served from a memory-only custom protocol, not `srcdoc` (which would inherit the privileged page's CSP). They use an opaque-origin iframe with no same-origin, top-navigation, pop-up, or native API permission. HTML scripts are disabled unless explicitly trusted for that document. Standalone MDX executes compiled JavaScript only in this sandbox; network access remains blocked. Script execution can still consume CPU, so do not preview hostile MDX or enable hostile HTML scripts.
+Static previews are served from a memory-only custom protocol, not `srcdoc` (which would inherit the privileged page's CSP). They use an opaque-origin iframe with no same-origin, top-navigation, pop-up, or native API permission. HTML scripts are disabled unless explicitly trusted for that document. Standalone MDX and read-only Markdown diagram previews execute their compiled rendering code only in this sandbox; Markdown is compiled as Markdown, not MDX expressions. Network access remains blocked. Script execution can still consume CPU, so do not preview hostile MDX or enable hostile HTML scripts.
 
 Local CSS (including bounded imports), images, SVG image data, fonts, and explicitly trusted local scripts pass through canonical Rust path grants. Stylesheet-relative URLs resolve from the stylesheet, not the document. Asset directories are watched alongside document directories. Missing or unauthorized assets surface warnings. Static previews are bounded to 256 asset references, 128 watched asset directories per open document, 24 MiB of expanded assets, and 32 MiB of prepared HTML; larger applications belong in a development server. Static previews cannot fetch arbitrary local files or make network requests; module dependencies and framework behavior belong in a development server.
 
