@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { feedbackSelection, type FeedbackMessage } from "./inspection";
 export interface Snapshot {
   text: string;
   hash: string;
@@ -40,6 +41,27 @@ export interface SearchResults {
   paths: string[];
   incomplete: boolean;
 }
+export interface AgentTarget {
+  id: string;
+  label: string;
+  projectRoot: string;
+  sessionId?: string;
+  blockId?: string;
+  process?: string;
+  busy: boolean;
+  connected: boolean;
+}
+export interface DeliveryAck {
+  id: string;
+  status: "received" | "accepted" | "duplicate";
+  delivery: "submitted" | "queued" | "consumed";
+}
+export interface PreviewAsset {
+  kind: "style" | "script" | "data";
+  value: string;
+  path: string;
+  mime?: string;
+}
 export type SaveResult =
   | { kind: "saved"; snapshot: Snapshot }
   | { kind: "conflict"; snapshot: Snapshot | null; error: string | null };
@@ -65,7 +87,17 @@ export const api = {
     invoke<string>("image_data", { document, reference }),
   link: (document: string, reference: string) =>
     invoke<void>("open_link", { document, reference }),
+  previewAsset: (document: string, reference: string) =>
+    invoke<PreviewAsset>("preview_asset", { document, reference }),
+  publishPreview: (id: string, html: string) => invoke<string>('publish_preview', { id, html }),
+  releasePreview: (id: string) => invoke<void>('release_preview', { id }),
   search: (path: string, query: string) => invoke<SearchResults>("search_documents", { path, query }),
+  agentTargets: (projectRoot?: string) =>
+    invoke<AgentTarget[]>("agent_targets", { projectRoot: projectRoot ?? null }),
+  sendFeedback: (targetId: string, message: FeedbackMessage) =>
+    invoke<DeliveryAck>("send_feedback", { targetId, message: { ...message, selection: feedbackSelection(message.selection) } }),
+  feedbackStatus: (targetId: string, id: string) => invoke<DeliveryAck>('feedback_status', { targetId, id }),
+  focusAgent: (targetId: string) => invoke<void>('focus_agent', { targetId }),
   recoveryStatus: () => invoke<RecoveryStatus>("recovery_status"),
   setRecovery: (enabled: boolean) => invoke<RecoveryStatus>("set_recovery", { enabled }),
   storeSession: (session: Session) => invoke<void>("save_session", { session }),

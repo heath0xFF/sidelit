@@ -50,7 +50,7 @@ impl Session {
         }
         for doc in &self.documents {
             if !valid_path(&doc.path)
-                || !files::markdown(&doc.path)
+                || !files::supported_document(&doc.path)
                 || !paths.insert(doc.path.clone())
             {
                 return Err("Invalid or duplicate recovery path".into());

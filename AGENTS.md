@@ -8,8 +8,10 @@ Tauri 2 / Rust desktop app. React + TypeScript + Vite frontend. pnpm only. No El
 - `src-tauri/src/service.rs`: path grants, dialogs, directory watchers, narrow commands.
 - `src-tauri/src/search.rs`, `recovery.rs`: bounded workspace search and private, validated recovery checkpoints.
 - `src-tauri/src/cli.rs`, `main.rs`: CLI parsing, nonblocking handoff receipts, single instance, macOS file-open events.
+- `src-tauri/src/integrations.rs`: embedded Pi/skill setup, read-only diagnostics, build identity. Preserve custom installations; never type into a terminal during setup.
 - `src/documents.ts`: canonical buffers, baseline snapshots, revisions, pending external versions.
 - `src/Rich.tsx`: Crepe transactions; `Source.tsx`: lazy Monaco, local worker, model lifecycle.
+- `src/inspection.ts`, `selection-dom.ts`, `SelectionActions.tsx`, `FeedbackComposer.tsx`: bounded selection snapshots, verified highlights, Explain/Review/Edit and in-memory request drafts. `Preview.tsx` hosts isolated HTML/MDX and opt-in dev-server inspection; `agents.rs` and `extensions/pi-sidelit/` own local delivery.
 - `src/fidelity.ts`: frontmatter preservation and a conservative Source-only gate at Rendered entry.
 - `src/closing.ts`, `recovery.ts`: live close approvals and serialized, coalesced checkpoints.
 - `src/appearance.ts`: bounded font-size settings and System/One Light/One Dark preference resolution. `style.css` owns shared palette tokens; fonts and OFL notices are bundled offline.
@@ -38,7 +40,7 @@ Desktop checks: use the isolated `desktop-test` bundle command in `README.md`, t
 3. A dirty draft survives every external change and failed operation. Reload requires explicit discard consent.
 4. Re-read disk before saving, compare the baseline hash, write and sync a same-directory temp file, then replace. Never overwrite a conflict.
 5. Save acknowledgments update the baseline, not the current buffer. Read tokens reject stale results. New edits during Save remain dirty.
-6. Never render raw document HTML or MDX. Unsupported syntax uses Source. New fidelity cases need tests.
+6. Never execute document HTML or MDX in the privileged webview. Keep the Markdown fidelity gate; HTML/MDX execution belongs only in the opaque-origin sandbox, without native APIs. Project imports require an explicitly opened dev-server origin and opt-in inspection bridge. New fidelity and security cases need tests.
 7. Native selections, CLI requests, and confirmed links grant paths in Rust. Every custom filesystem command must enforce these grants and canonical identities. Capabilities do not enforce custom path scopes.
 8. Watch directories, not file inodes. Keep watcher guards in application state. Do not use ignore timers for own saves.
 9. Register single-instance first. Queue requests until the frontend drains them. Keep test instrumentation out of ordinary release builds.
@@ -47,3 +49,4 @@ Desktop checks: use the isolated `desktop-test` bundle command in `README.md`, t
 12. Recovery is opt-in, bounded, private, and separate from originals. Restore requires native path approval. Discarded drafts must not re-enter the final checkpoint; disabling recovery waits for writes before deleting it.
 13. Updates use the same live draft approvals as Quit. They replace only the running app bundle and accept no frontend target path or URL. Never install or restart silently, accept unsigned/version-mismatched updates, expose the private signing key, or sign a test build with it.
 14. Keep both lockfiles. Use brief comments only where the reason is not clear from the code.
+15. Capture document identity when selecting, not when opening the composer. Hiding a request must retain it. Replacement requires a user action and preserves intent. Freeze target, ID and payload after delivery starts; receipt is not completion. Quote/element reattachment must fail closed when identity changes.

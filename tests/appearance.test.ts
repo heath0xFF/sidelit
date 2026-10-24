@@ -8,9 +8,10 @@ import {
 } from "../src/appearance";
 
 describe("appearance preferences", () => {
-  it("defaults to the OS theme, not a saved resolved color", () => {
-    expect(themePreference(null)).toBe("system");
-    expect(themePreference("obsolete")).toBe("system");
+  it("defaults to dark and preserves an explicit System preference", () => {
+    expect(themePreference(null)).toBe("dark");
+    expect(themePreference("obsolete")).toBe("dark");
+    expect(themePreference('system')).toBe('system');
     expect(resolvedTheme("system", false)).toBe("light");
     expect(resolvedTheme("system", true)).toBe("dark");
   });

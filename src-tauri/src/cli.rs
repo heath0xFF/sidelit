@@ -1,4 +1,4 @@
-use crate::files::{canonical, markdown, Result};
+use crate::files::{canonical, supported_document, Result};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 
@@ -34,11 +34,11 @@ pub fn parse(args: &[String], cwd: &Path) -> Result<Option<Request>> {
     path.map(|p| {
         let path = canonical(&p)?;
         let directory = path.is_dir();
-        if !directory && !markdown(&path) {
-            return Err("Choose a .md or .markdown file".into());
+        if !directory && !supported_document(&path) {
+            return Err("Choose a .md, .markdown, .mdx, .html, or .htm file".into());
         }
         if directory && source {
-            return Err("--source requires a Markdown file".into());
+            return Err("--source requires a supported document file".into());
         }
         Ok(Request {
             path,
@@ -65,5 +65,20 @@ mod tests {
         assert!(parse(&["absent.md".into()], dir.path()).is_err());
         assert!(parse(&["--wat".into()], dir.path()).is_err());
         assert!(parse(&["--source".into(), ".".into()], dir.path()).is_err());
+
+        for extension in ["html", "mdx"] {
+            let path = dir.path().join(format!("page.{extension}"));
+            std::fs::write(&path, "<h1>Preview</h1>").unwrap();
+            assert!(parse(
+                &[path
+                    .file_name()
+                    .unwrap()
+                    .to_os_string()
+                    .into_string()
+                    .unwrap()],
+                dir.path()
+            )
+            .is_ok());
+        }
     }
 }

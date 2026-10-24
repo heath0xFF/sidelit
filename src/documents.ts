@@ -1,8 +1,10 @@
 import type { Opened, Snapshot, SaveResult, SavedDocument } from "./api";
 import { sourceReason } from "./fidelity";
+import { formatForPath, type DocumentFormat } from "./formats";
 export type Mode = "rendered" | "source";
 export interface Document {
   path: string;
+  format: DocumentFormat;
   text: string;
   disk: Snapshot;
   revision: number;
@@ -14,8 +16,10 @@ export interface Document {
   notice: string;
 }
 export const dirty = (doc: Document) => doc.text !== doc.disk.text;
-function rendering(text: string, mode: Mode) {
-  const reason = mode === "rendered" ? sourceReason(text) : undefined;
+function rendering(path: string, text: string, mode: Mode) {
+  const reason = mode === "rendered" && formatForPath(path) === "markdown"
+    ? sourceReason(text)
+    : undefined;
   return { mode: reason ? "source" as const : mode, reason };
 }
 export interface Transport {
@@ -51,10 +55,11 @@ export class Documents {
       ...this.docs,
       {
         path: file.path,
+        format: formatForPath(file.path) ?? "markdown",
         text: file.snapshot.text,
         disk: file.snapshot,
         revision: 0,
-        ...rendering(file.snapshot.text, mode),
+        ...rendering(file.path, file.snapshot.text, mode),
         saving: false,
         notice: "",
       },
@@ -63,7 +68,7 @@ export class Documents {
   }
   setMode(path: string, mode: Mode) {
     const doc = this.get(path);
-    if (doc) this.update(path, rendering(doc.text, mode));
+    if (doc) this.update(path, rendering(path, doc.text, mode));
   }
   restore(saved: SavedDocument) {
     if (this.get(saved.path)) return;
@@ -107,7 +112,7 @@ export class Documents {
         this.update(path, {
           disk,
           text: disk.text,
-          ...rendering(disk.text, doc.mode),
+          ...rendering(path, disk.text, doc.mode),
           review: !discard && disk.hash !== doc.disk.hash ? doc.disk : doc.review,
           pending: undefined,
           revision: doc.revision + (doc.text === disk.text ? 0 : 1),

@@ -1,5 +1,188 @@
 # Verification — v0.1
 
+## v0.2.0 release preparation — 2026-10-23
+
+All manifests and the Cargo lockfile agree on 0.2.0. Frozen pnpm installation,
+TypeScript, 89 frontend/bridge tests, Rust formatting/check and 23 Rust tests pass.
+`scripts/updater-smoke.py` passed against disposable app bundles and a temporary
+signing key: version substitution and corrupt archives are rejected, cancelled
+and failed installs preserve the dirty draft, Save precedes installation, and
+real bundle replacement/restart succeeds without reusing a deleted CLI path.
+The current version is not offered again. The test's editing step now explicitly
+enters rich Edit, and its restart assertion checks the empty view rather than old
+branding copy. No production key or ordinary running app was used by that test.
+
+## Selection workflow and integration setup — 2026-10-23
+
+Markdown now opens read-only with explicit rich Edit. Selection-adjacent Explain,
+Review and Edit open a retained request: Hide/Escape, repeated opening and tab
+changes preserve its instruction and original attachment. Capture records the
+document version immediately, before the composer opens. Changed or unsaved
+context is disclosed; text/element highlights refuse mismatched locations.
+Delivery attempts retain their original target, ID and payload. Answers remain
+in Pi, with a focus-only Show in Rex action.
+
+Verified in this pass:
+
+- TypeScript check, **89 frontend/bridge tests** and **23 Rust tests**, including
+  multi-paragraph anchors, ambiguous/deleted selections, installer dry-run,
+  idempotence, upgrades and preservation of modified/extra files.
+- Full packaged `desktop-smoke.py`: rich and Monaco input, CodeMirror blocks,
+  undo/redo, no-op saves, conflicts, refresh, file lifecycle and crash recovery.
+  The suite caught a Crepe read-only transition that did not update embedded
+  CodeMirror blocks; a decoration-only node-view refresh fixed it without
+  changing canonical text or replacing editor models.
+- Packaged `feedback-smoke.py`: selection capture predates composer opening,
+  attachment replacement retains Explain, requests survive hiding/reopening and
+  tab changes, stale context appears, and reading/selection writes no file bytes.
+  The delivery controls remain visible at 720×630 and 720×480. Captures and the
+  report are under `test-results/ux-review/`.
+- Packaged `companion-smoke.py`: real Pi 1.4 runtime in a separate Rex pane,
+  read-only doctor health check, busy-session follow-up, consumption acknowledgment,
+  real edit-tool execution and live refresh without losing reading position.
+  HTML/MDX/server previews, local assets, script opt-in and sandbox boundaries
+  passed. The model is an isolated deterministic offline fixture, not a personal
+  model account or the user's existing Pi session.
+
+Setup embeds the matching Pi extension and agent skill in the executable and
+installs versioned private resources. Doctor and sessions emit schema-versioned
+JSON, distinguish installed from loaded receivers, and do not send instructions.
+The installed user's integrations and running ordinary Sidelit were not replaced
+or restarted. No Rex plugin, new runtime dependency or terminal typing was added.
+
+The independent reviewer scored all five submitted fixes resolved and returned
+**ship for the submitted scope**, including the rebuilt wide/narrow captures.
+Rust format/check, skill validation and `git diff --check` passed. The ordinary
+release app was rebuilt without `desktop-test`; its build ID is
+`0cd57af-1792813685`, and `codesign --verify --deep --strict` passes. Its setup
+dry-run reports both existing repo-linked integrations current. Nothing was
+pushed or installed into `/Applications`.
+
+Limitations: one active request at a time, held in memory until app exit; no batch
+review queue or persisted feedback drafts. Explain/Review are instructions to Pi,
+not an agent permission boundary. Source lines remain inferred text matches;
+ambiguous or changed attachments require selecting again. Dev-server inspection
+requires the updated opt-in bridge. Native accessibility/VoiceOver and focus-only
+Show in Rex still need a manual human pass.
+
+## Scroll preservation and Rex styling — 2026-10-23
+
+The preview previously removed/recreated its iframe without preserving view state.
+It now keeps the old frame during preparation, captures a bounded scroll snapshot
+through the isolated bridge, and restores a visible anchor/offset with a pixel
+fallback. This includes up to eight scrolling elements and a 32-document memory
+cache. Restoration waits up to two seconds for layout and stops on user input;
+it does not restore a different development-server route. Disabling the server
+bridge also disables its inspection and keyboard interception.
+
+Verified:
+
+- **82 frontend/bridge tests**, including shell and sandbox syntax-contrast
+  regressions, TypeScript check, **20 Rust tests**, Rust format
+  check and `git diff --check`.
+- Packaged WKWebView: long-page HTML, CSS refresh, 250px of content inserted
+  above the reading position, manual refresh, nested scroll position, MDX
+  recompilation and local server reload. The same passage stayed within 2px
+  of its previous viewport offset.
+- A real Pi runtime in a separate Rex pane accepted a busy-session follow-up,
+  used its real edit tool, and updated HTML without moving the reading position.
+  The model remains the deterministic offline fixture; no personal model account
+  or existing agent session was used for this test.
+- Full desktop smoke suite: no-op saves, dirty conflicts, merge safety,
+  undo/redo, recovery/crash handling, image watching, live font/theme changes
+  without editor remounts, and no unhandled JavaScript errors.
+- Dark/light, Source, conflict, focus and Actions-panel captures in packaged
+  WKWebView at 1180×790 and 720×630, plus the 720×480 minimum window. Captures and
+  geometry checks are in `test-results/polish/rex/`; companion captures and logs
+  remain under `test-results/companion-*`.
+- The repository-owned skill at `skills/sidelit/SKILL.md` now describes all
+  supported formats and distinguishes the skill from the Pi receiver extension.
+  The skill validator passes. The installed skill on this machine is already a
+  symlink to that repository folder.
+
+Rex's current native app was inspected directly; the official Superlogical site
+was also checked but uses a different light documentation design. The new shell
+adapts the native app's charcoal/violet palette, soft tabs, compact icons and inset
+panes. HTML/server document styles remain independent. No dependencies or fonts
+were added in this pass. The design hook's only findings were two sandbox aliases
+for existing fonts; those exact values were documented and narrowly suppressed.
+
+The independent visual review requested higher syntax contrast. That fix was
+recaptured and scored resolved (`ship` for the scored contrast fix), with no
+introduced regressions observed in the supplied captures. Palette tests now
+enforce at least 4.5:1 for normal shell/editor text and MDX syntax in both themes.
+The ordinary app was rebuilt without `desktop-test`; its ad-hoc signature passes
+`codesign --verify --deep --strict`. No release publishing or installation into
+`/Applications` was performed.
+
+Limitations: view state is not saved across application restarts. Removed,
+ambiguous, sticky, virtualized or heavily restructured anchors use best-effort
+pixel restoration; layout arriving after the bounded two-second window can still
+move content. A development server needs the updated opt-in bridge to participate.
+No changes were made to the user's running Sidelit, Rex or Pi sessions.
+
+## Visual companion review — 2026-10-23
+
+Reviewed the previous implementation against the visual-companion brief. Corrected
+the MDX whitelist renderer (now real compilation/execution in an isolated frame),
+inherited `srcdoc` CSP and frame navigation failures, stylesheet-relative assets,
+missing asset watches, ambiguous target selection, overlong macOS socket paths,
+and premature claims of Pi acceptance. Added the actual page-side development
+bridge, bounded context validation, retry-safe receipts, lifecycle cleanup, and
+responsive feedback states. Existing file/save/recovery logic was retained.
+
+Verified on this Mac:
+
+- `pnpm install --frozen-lockfile`, `pnpm check`, and **70 frontend/bridge tests**.
+- Rust formatting/check and **20 Rust tests** (17 application + 3 update signature).
+- Extension and offline-provider TypeScript against the installed **Pi 1.4.0** types.
+- Packaged `app.sidelit.companion-check` WKWebView, not a browser approximation.
+- Full `scripts/desktop-smoke.py`: no-op/optimistic saves, rich/source editing,
+  undo/redo, source fidelity, dirty conflict protection, merge races, recovery
+  crash/restart/deletion, font/theme identity, and nested image refresh without
+  changing Markdown. No unhandled JavaScript, CSP, or worker errors.
+- `scripts/companion-smoke.py`, launched in its own Rex terminal pane, with an
+  **actual Pi runtime and actual edit tool**. The provider is a deterministic
+  offline fixture, not a remote LLM. Feedback sent from the composer while Pi was
+  busy became a native follow-up, received an acknowledgment, was consumed by Pi,
+  edited the temporary HTML, and refreshed the preview. Shutdown removed its
+  socket and registration. No personal Pi configuration or account was used.
+- HTML scripts off by default; explicit trust; local CSS/SVG and stylesheet
+  refresh; configurable viewport; text/DOM selection; real MDX JSX, expressions,
+  components, tasks and highlighting; import errors; development-server bridge.
+  Local frames had no Tauri globals and could not read the parent document.
+  Initial script failures surface even before the inspection handshake; WebKit
+  may redact their details because the frame has an opaque origin.
+- Packaged captures inspected at 1180px and 720px window widths. The Impeccable
+  pass guided compact controls, selection summaries, focus/error states, and
+  overflow fixes without replacing the existing visual system. The static
+  detector reported no findings; this is not an accessibility certification.
+
+Evidence is in ignored `test-results/desktop-review.log`, `desktop.json`,
+`companion-review.log`, `companion-pi-events.json`, and `companion-*.png`.
+The test bundles are not for distribution; ordinary builds exclude WebDriver.
+
+An ordinary `pnpm tauri build --bundles app` also passed, with no `desktop-test`
+feature. The ad-hoc-signed Apple Silicon app is at
+`src-tauri/target/release/bundle/macos/Sidelit.app` (about 16.94 MiB). Build warnings
+remain for the large editor chunks and harmless empty MDX dependency directives.
+No app installation or release publishing was performed.
+
+Remaining real-world checks: your chosen hosted/local LLM provider, your specific
+framework's HMR and embedding policy, native dialog/VoiceOver interaction, Intel,
+Linux, and older macOS versions. The real Pi queue/tool/extension lifecycle was
+tested; model reasoning and arbitrary framework runtimes were not. Standalone
+MDX intentionally rejects imports; project-aware MDX uses an existing server.
+No production updater installation or release signing was performed in this pass.
+
+Official API references checked: [Pi extensions](https://pi.dev/docs/latest/extensions),
+[MDX compiler](https://mdxjs.com/packages/mdx/), and
+[Rex automation](https://www.superlogical.com/rex/docs/automate/server-api), alongside
+installed Pi types/implementation and live Rex CLI responses. Rex discovery uses
+read-only commands with autostart disabled; delivery never simulates terminal input.
+
+The older sections below are historical measurements, not new performance claims.
+
 ## Environment
 
 Checked on Apple M5 Pro, 48 GiB RAM, macOS 26.6.2 (25G83), arm64. Rust 1.95.0, Node 26.8.1, pnpm 10.33.2. The desktop engine was the installed WKWebView, not Chromium.

@@ -85,6 +85,10 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     def body():
         return js('return document.body.innerText').replace('\u00a0', ' ')
 
+    def edit_rendered():
+        js('const b=[...document.querySelectorAll("button")].find(b=>b.getAttribute("aria-label")==="Edit rendered Markdown");if(b?.getAttribute("aria-pressed")==="false")b.click()')
+        wait(lambda: js('return document.querySelector(".ProseMirror")?.isContentEditable'), 'explicit rich editing')
+
     def screenshot(name):
         if os.environ.get('SIDELIT_SCREENSHOTS') == '0':
             return
@@ -148,7 +152,7 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     set_size(20)
     assert js('return getComputedStyle(document.querySelector(".ProseMirror p")).fontSize') == '20px'
     set_theme('dark')
-    assert js('return getComputedStyle(document.querySelector(".main")).color') == 'rgb(171, 178, 191)'
+    assert js('return getComputedStyle(document.querySelector(".main")).color') == 'rgb(213, 214, 223)'
     assert js('return document.querySelector(".ProseMirror")===__richEditor'), 'appearance changes must not remount Crepe'
     assert not js('return !!document.querySelector(".dirty-dot")')
     js('window.dispatchEvent(new KeyboardEvent("keydown",{key:"-",metaKey:true,bubbles:true,cancelable:true}))')
@@ -163,9 +167,9 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     set_size(20)
     wait(lambda: js('return getComputedStyle(document.querySelector(".view-lines")).fontSize') == '20px', 'Monaco font update')
     set_theme('light')
-    wait(lambda: js('return getComputedStyle(document.querySelector(".monaco-editor-background")).backgroundColor') == 'rgb(250, 250, 250)', 'Monaco One Light')
+    wait(lambda: js('return getComputedStyle(document.querySelector(".monaco-editor-background")).backgroundColor') == 'rgb(250, 250, 253)', 'Monaco Light')
     set_theme('dark')
-    wait(lambda: js('return getComputedStyle(document.querySelector(".monaco-editor-background")).backgroundColor') == 'rgb(40, 44, 52)', 'Monaco One Dark')
+    wait(lambda: js('return getComputedStyle(document.querySelector(".monaco-editor-background")).backgroundColor') == 'rgb(51, 54, 67)', 'Monaco Dark')
     assert js('return document.querySelector(".monaco-editor")===__sourceEditor'), 'appearance changes must not remount Monaco'
     assert not js('return !!document.querySelector(".dirty-dot")')
     set_size(16)
@@ -176,6 +180,8 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     wait(lambda: js('return !!document.querySelector(".ProseMirror")'), 'rendered mode again')
     assert not js('return !!document.querySelector(".dirty-dot")')
     # A real contenteditable input transaction must update the shared buffer synchronously.
+    assert not js('return document.querySelector(".ProseMirror").isContentEditable'), 'rendered documents default to reading'
+    edit_rendered()
     js('const el=document.querySelector(".ProseMirror p");el.focus();const r=document.createRange();r.selectNodeContents(el);const s=getSelection();s.removeAllRanges();s.addRange(r);document.execCommand("insertText",false,"Edited in WKWebView.")')
     wait(lambda: js('return !!document.querySelector(".dirty-dot")'), 'rich edit')
     assert js('return getComputedStyle(document.querySelector(".ProseMirror h1")).marginTop') == '0px', 'cursor widgets must not move the heading'
@@ -247,6 +253,7 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     time.sleep(.15)
     assert not js('return !!document.querySelector(".tab.active .dirty-dot")'), 'disk reload must reset rich history'
     assert 'Agent text.' in body()
+    edit_rendered()
     js('const el=document.querySelector(".ProseMirror p");el.focus();const r=document.createRange();r.selectNodeContents(el);getSelection().removeAllRanges();getSelection().addRange(r);document.execCommand("insertText",false,"Unsaved draft")')
     wait(lambda: js('return !!document.querySelector(".dirty-dot")'), 'dirty buffer')
     file.write_text('# Conflict from disk\n\nExternal version.\n')
@@ -273,6 +280,7 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     wait(lambda: 'File unavailable' in body(), 'deletion')
     file.write_text('# Recreated\n')
     wait(lambda: 'Recreated' in body() and 'File unavailable' not in body(), 'recreation')
+    edit_rendered()
     js('const el=document.querySelector(".ProseMirror h1");el.focus();const r=document.createRange();r.selectNodeContents(el);getSelection().removeAllRanges();getSelection().addRange(r);document.execCommand("insertText",false,"Close test")')
     wait(lambda: js('return !!document.querySelector(".dirty-dot")'), 'close test draft')
     js('document.querySelector(".tab.active .tab-close").click()')
@@ -291,9 +299,17 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     assert js('return [...document.querySelectorAll(".tab")].filter(e=>e.textContent.includes("研究 notes.md")).length') == 1
     launch('Welcome.md', cwd=folder)
     wait(lambda: js('return [...document.images].some(i=>i.naturalWidth===256)'), 'local image')
+    asset = folder / 'assets/sidelit.png'
+    asset_bytes = asset.read_bytes()
+    asset.write_bytes(base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII='))
+    wait(lambda: js('return [...document.querySelectorAll(".ProseMirror img")].some(i=>i.naturalWidth===1)'), 'nested Markdown image refresh')
+    assert not js('return !!document.querySelector(".tab.active .dirty-dot")'), 'image refresh must not edit Markdown'
+    asset.write_bytes(asset_bytes)
+    wait(lambda: js('return [...document.images].some(i=>i.naturalWidth===256)'), 'restored image refresh')
     welcome = folder / 'Welcome.md'
     original = welcome.read_text()
     image_line = next(line for line in original.splitlines() if line.startswith('!['))
+    edit_rendered()
     js('const el=document.querySelector(".ProseMirror p");el.focus();const r=document.createRange();r.selectNodeContents(el);getSelection().removeAllRanges();getSelection().addRange(r);document.execCommand("insertText",false,"GFM edit test")')
     click('Save')
     wait(lambda: 'GFM edit test' in welcome.read_text(), 'GFM rich save')
@@ -302,6 +318,7 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     wait(lambda: 'This is a sample document' in body(), 'restored sample')
     wait(lambda: js('return !!document.querySelector(".cm-content")'), 'fenced code editor')
     assert 'Inconsolata' in js('return getComputedStyle(document.querySelector(".cm-scroller")).fontFamily')
+    edit_rendered()
     js('const el=document.querySelector(".cm-content");el.focus();const r=document.createRange();r.selectNodeContents(el);getSelection().removeAllRanges();getSelection().addRange(r);document.execCommand("insertText",false,"fn history_check() {}")')
     wait(lambda: js('return !!document.querySelector(".tab.active .dirty-dot")'), 'code block edit')
     history_action('undo', menu=True)
@@ -343,6 +360,7 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     assert fixture.read_bytes() == initial
     def rich_edit(text):
         wait(lambda: js('return !!document.querySelector(".ProseMirror p")'), 'editable paragraph')
+        edit_rendered()
         js('const el=document.querySelector(".ProseMirror p");el.focus();const r=document.createRange();r.selectNodeContents(el);getSelection().removeAllRanges();getSelection().addRange(r);document.execCommand("insertText",false,arguments[0])', text)
         wait(lambda: js('return !!document.querySelector(".tab.active .dirty-dot")'), 'new draft')
 

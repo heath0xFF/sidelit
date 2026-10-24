@@ -28,6 +28,7 @@ pub struct Inner {
     grants: HashSet<PathBuf>,
     open: HashSet<PathBuf>,
     directories: HashSet<PathBuf>,
+    assets: HashMap<PathBuf, HashSet<PathBuf>>,
     watchers: HashMap<PathBuf, Debouncer<RecommendedWatcher, RecommendedCache>>,
     requests: VecDeque<Request>,
 }
@@ -80,6 +81,7 @@ impl Inner {
     }
     fn watches(&mut self, app: &AppHandle) -> Result<()> {
         let mut wanted = self.directories.clone();
+        wanted.extend(self.assets.values().flat_map(|paths| paths.iter().cloned()));
         wanted.extend(
             self.open
                 .iter()
@@ -142,7 +144,7 @@ pub async fn choose(app: AppHandle, folder: bool) -> Result<()> {
         dialog.blocking_pick_folder()
     } else {
         dialog
-            .add_filter("Markdown", &["md", "markdown"])
+            .add_filter("Documents", &["md", "markdown", "mdx", "html", "htm"])
             .blocking_pick_file()
     };
     if let Some(path) = selected {
@@ -170,8 +172,8 @@ pub async fn open_document(
 ) -> Result<Opened> {
     let mut inner = state.0.lock().unwrap();
     let path = inner.allowed(&path)?;
-    if !files::markdown(&path) {
-        return Err("Not a Markdown file".into());
+    if !files::supported_document(&path) {
+        return Err("Not a supported Sidelit document".into());
     }
     let snapshot = files::snapshot(&path)?;
     inner.open.insert(path.clone());
@@ -205,6 +207,7 @@ pub async fn save_document(
 pub fn close_document(app: AppHandle, state: State<Service>, path: PathBuf) -> Result<()> {
     let mut inner = state.0.lock().unwrap();
     inner.open.remove(&path);
+    inner.assets.remove(&path);
     inner.watches(&app)
 }
 #[tauri::command]
@@ -242,7 +245,7 @@ pub async fn list_directory(
         }
         // Do not traverse symlinks; they may leave the authorized workspace.
         let kind = entry.file_type().map_err(|e| e.to_string())?;
-        if kind.is_dir() || (kind.is_file() && files::markdown(&entry.path())) {
+        if kind.is_dir() || (kind.is_file() && files::supported_document(&entry.path())) {
             entries.push(Entry {
                 path: entry.path(),
                 name,
@@ -280,8 +283,9 @@ pub async fn save_copy(
         .as_ref()
         .map(|p| {
             format!(
-                "{}-copy.md",
-                p.file_stem().unwrap_or_default().to_string_lossy()
+                "{}-copy.{}",
+                p.file_stem().unwrap_or_default().to_string_lossy(),
+                p.extension().unwrap_or_default().to_string_lossy()
             )
         })
         .unwrap_or_else(|| "Untitled.md".into());
@@ -289,7 +293,7 @@ pub async fn save_copy(
         .dialog()
         .file()
         .set_file_name(name)
-        .add_filter("Markdown", &["md", "markdown"])
+        .add_filter("Documents", &["md", "markdown", "mdx", "html", "htm"])
         .blocking_save_file();
     let Some(selected) = selected else {
         return Ok(None);
@@ -308,8 +312,8 @@ pub async fn save_copy(
 
 fn create_selected(inner: &mut Inner, selected: &Path, text: &str) -> Result<Opened> {
     let target = files::identity(selected)?;
-    if !files::markdown(&target) {
-        return Err("Use a .md or .markdown extension".into());
+    if !files::supported_document(&target) {
+        return Err("Use a .md, .markdown, .mdx, .html, or .htm extension".into());
     }
     if target.exists() {
         return Err("Choose a new file name; no existing file was overwritten.".into());
@@ -329,11 +333,12 @@ fn create_selected(inner: &mut Inner, selected: &Path, text: &str) -> Result<Ope
 
 #[tauri::command]
 pub async fn image_data(
+    app: AppHandle,
     state: State<'_, Service>,
     document: PathBuf,
     reference: String,
 ) -> Result<String> {
-    let inner = state.0.lock().unwrap();
+    let mut inner = state.0.lock().unwrap();
     let doc = inner.document(&document)?;
     let base = url::Url::from_file_path(&doc).map_err(|_| "Invalid document path")?;
     let target = base.join(&reference).map_err(|e| e.to_string())?;
@@ -358,12 +363,107 @@ pub async fn image_data(
         "webp" => "image/webp",
         _ => return Err("Only PNG, JPEG, GIF and WebP images are allowed".into()),
     };
+    let parent = target.parent().ok_or("Missing image parent")?.to_path_buf();
+    let paths = inner.assets.entry(doc).or_default();
+    if paths.len() >= 128 && !paths.contains(&parent) {
+        return Err("Image directory limit reached".into());
+    }
+    paths.insert(parent);
+    inner.watches(&app)?;
     drop(inner);
     let bytes = files::read_bytes(&target, files::MAX_BYTES)?;
     Ok(format!(
         "data:{mime};base64,{}",
         base64::engine::general_purpose::STANDARD.encode(bytes)
     ))
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewAsset {
+    kind: &'static str,
+    value: String,
+    path: PathBuf,
+    mime: Option<&'static str>,
+}
+
+fn local_asset(inner: &Inner, document: &Path, reference: &str) -> Result<PathBuf> {
+    let doc = inner.document(document)?;
+    let base = url::Url::from_file_path(&doc).map_err(|_| "Invalid document path")?;
+    let target = base.join(reference).map_err(|e| e.to_string())?;
+    if target.scheme() != "file" {
+        return Err("Only local preview assets are allowed".into());
+    }
+    let target = files::canonical(&target.to_file_path().map_err(|_| "Invalid asset path")?)?;
+    if !target.starts_with(doc.parent().unwrap())
+        && !inner.roots.iter().any(|r| target.starts_with(r))
+    {
+        return Err("Preview asset is outside the authorized folders".into());
+    }
+    Ok(target)
+}
+
+#[tauri::command]
+pub async fn preview_asset(
+    app: AppHandle,
+    state: State<'_, Service>,
+    document: PathBuf,
+    reference: String,
+) -> Result<PreviewAsset> {
+    let mut inner = state.0.lock().unwrap();
+    let target = local_asset(&inner, &document, &reference)?;
+    let paths = inner.assets.entry(document.clone()).or_default();
+    let parent = target.parent().ok_or("Missing asset parent")?.to_path_buf();
+    if paths.len() >= 128 && !paths.contains(&parent) {
+        return Err("Preview asset directory limit reached".into());
+    }
+    paths.insert(parent);
+    inner.watches(&app)?;
+    let ext = target
+        .extension()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_ascii_lowercase();
+    if matches!(ext.as_str(), "css" | "js" | "mjs") {
+        drop(inner);
+        let bytes = files::read_bytes(&target, files::MAX_BYTES)?;
+        return Ok(PreviewAsset {
+            kind: if ext == "css" { "style" } else { "script" },
+            value: String::from_utf8(bytes).map_err(|_| "Preview asset is not UTF-8")?,
+            path: target,
+            mime: Some(if ext == "css" {
+                "text/css"
+            } else {
+                "text/javascript"
+            }),
+        });
+    }
+    let mime = match ext.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "svg" => "image/svg+xml",
+        "woff" => "font/woff",
+        "woff2" => "font/woff2",
+        "ttf" => "font/ttf",
+        _ => {
+            return Err(
+                "Unsupported preview asset; use a development server for this resource type".into(),
+            )
+        }
+    };
+    drop(inner);
+    let bytes = files::read_bytes(&target, files::MAX_BYTES)?;
+    Ok(PreviewAsset {
+        kind: "data",
+        path: target,
+        value: format!(
+            "data:{mime};base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(bytes)
+        ),
+        mime: Some(mime),
+    })
 }
 
 #[tauri::command]
@@ -583,6 +683,39 @@ mod tests {
         {
             std::os::unix::fs::symlink(b.path(), a.path().join("escape")).unwrap();
             assert!(inner.allowed(&a.path().join("escape/no.md")).is_err());
+        }
+    }
+
+    #[test]
+    fn preview_assets_require_open_document_and_canonical_folder_grants() {
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        let root = files::canonical(a.path()).unwrap();
+        let outside = files::canonical(b.path()).unwrap();
+        fs::write(outside.join("secret.css"), "private").unwrap();
+        fs::create_dir(root.join("css")).unwrap();
+        fs::write(root.join("css/local.css"), "h1{}").unwrap();
+        let mut inner = Inner::default();
+        let doc = root.join("page.html");
+        create_selected(&mut inner, &doc, "<h1>Preview</h1>").unwrap();
+        assert_eq!(
+            local_asset(&inner, &doc, "./css/local.css").unwrap(),
+            root.join("css/local.css")
+        );
+        assert!(local_asset(&inner, &doc, "https://example.com/a.css").is_err());
+        assert!(local_asset(
+            &inner,
+            &doc,
+            &url::Url::from_file_path(outside.join("secret.css"))
+                .unwrap()
+                .to_string()
+        )
+        .is_err());
+        assert!(local_asset(&inner, &root.join("unopened.html"), "css/local.css").is_err());
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&outside, root.join("escape")).unwrap();
+            assert!(local_asset(&inner, &doc, "escape/secret.css").is_err());
         }
     }
 }

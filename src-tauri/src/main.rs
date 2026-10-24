@@ -1,6 +1,9 @@
+mod agents;
 mod cli;
 mod files;
+mod integrations;
 mod menu;
+mod preview;
 mod recovery;
 mod search;
 mod service;
@@ -48,14 +51,21 @@ fn acknowledge(path: Option<&Path>, result: Result<(), String>) {
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
     if args == ["--help"] || args == ["-h"] {
-        println!("Sidelit — Markdown, beside your work.\n\nUsage: sidelit [--source] [PATH]\n       sidelit --help\n       sidelit --version\n\nPATH is a Markdown file or folder, relative to your current directory.\nRequests reuse the running app. The command returns after handoff.");
+        println!("Sidelit — a visual companion for terminal development.\n\nUsage: sidelit [--source] [PATH]\n       sidelit setup [--pi] [--skill] [--dry-run] [--json]\n       sidelit doctor [--project DIR] [--json]\n       sidelit sessions [--project DIR] [--json]\n       sidelit --help\n       sidelit --version\n\nPATH is a Markdown, MDX, or HTML file, or a folder, relative to your current directory.\nRequests reuse the running app. The command returns after handoff.\nSetup installs bundled integrations without a checkout. Existing custom installations are preserved.\nDoctor is read-only; it never sends an agent instruction. JSON schema version: 1.\nExit codes: 0 success, 1 setup conflict or no healthy matching Pi (doctor), 2 invalid request/error.\nUse -- before a path named setup, doctor, or sessions.");
         return;
     }
     if args == ["--version"] {
-        println!("Sidelit {}", env!("CARGO_PKG_VERSION"));
+        println!(
+            "Sidelit {} ({})",
+            env!("CARGO_PKG_VERSION"),
+            env!("SIDELIT_BUILD_ID")
+        );
         return;
     }
     let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
+    if let Some(code) = integrations::dispatch(&args, &cwd) {
+        std::process::exit(code);
+    }
     // Launch Services sends file-open events to its child, so only detach terminal launches.
     #[cfg(target_os = "macos")]
     let native_launch = unsafe { libc::getppid() == 1 };
@@ -122,6 +132,7 @@ fn main() {
         .manage(updates::Updates::default())
         .manage(service::Service::default())
         .manage(recovery::Recovery::default())
+        .manage(preview::Previews::default())
         .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
             let (args, ack) = split_ack(args.into_iter().skip(1).collect());
             let result = cli::parse(&args, Path::new(&cwd)).map(|r| {
@@ -139,6 +150,9 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .register_uri_scheme_protocol("sidelit-preview", |context, request| {
+            preview::response(context.app_handle(), request)
+        })
         .invoke_handler(tauri::generate_handler![
             service::ready,
             service::choose,
@@ -152,7 +166,14 @@ fn main() {
             service::save_copy,
             service::image_data,
             service::open_link,
+            service::preview_asset,
+            preview::publish_preview,
+            preview::release_preview,
             service::search_documents,
+            agents::agent_targets,
+            agents::send_feedback,
+            agents::feedback_status,
+            agents::focus_agent,
             service::recovery_status,
             service::set_recovery,
             service::save_session,
@@ -162,6 +183,9 @@ fn main() {
             updates::install_update
         ])
         .setup(move |app| {
+            if let Ok(instance) = integrations::register_instance() {
+                app.manage(instance);
+            }
             tauri::WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?
                 .on_navigation(|url| {
                     let local = (url.scheme() == "tauri" && url.host_str() == Some("localhost"))
@@ -169,7 +193,10 @@ fn main() {
                     let dev = cfg!(debug_assertions)
                         && url.host_str() == Some("127.0.0.1")
                         && url.port() == Some(1420);
-                    (local || dev) && matches!(url.path(), "" | "/" | "/index.html")
+                    ((local || dev) && matches!(url.path(), "" | "/" | "/index.html"))
+                        || (url.scheme() == "sidelit-preview"
+                            && url.host_str() == Some("localhost"))
+                        || preview::local_server(url)
                 })
                 .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
                 .build()?;

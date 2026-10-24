@@ -11,5 +11,6 @@
     "allowImportingTsExtensions": true,
     "types": ["vite/client"]
   },
-  "include": ["src", "tests", "vite.config.ts"]
+  "include": ["src", "tests", "vite.config.ts", "vite.preview.config.ts"],
+  "exclude": ["tests/fixtures"]
 }

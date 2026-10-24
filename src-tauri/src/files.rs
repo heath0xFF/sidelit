@@ -59,7 +59,7 @@ pub fn text_snapshot(text: &str) -> Snapshot {
 pub fn snapshot(path: &Path) -> Result<Snapshot> {
     let bytes = read_bytes(path, MAX_BYTES)?;
     let hash = hash(&bytes);
-    let text = String::from_utf8(bytes).map_err(|_| "Only UTF-8 Markdown is supported")?;
+    let text = String::from_utf8(bytes).map_err(|_| "Only UTF-8 documents are supported")?;
     Ok(Snapshot { text, hash })
 }
 
@@ -67,6 +67,14 @@ pub fn markdown(path: &Path) -> bool {
     path.extension()
         .and_then(|s| s.to_str())
         .is_some_and(|s| s.eq_ignore_ascii_case("md") || s.eq_ignore_ascii_case("markdown"))
+}
+
+pub fn supported_document(path: &Path) -> bool {
+    markdown(path)
+        || path
+            .extension()
+            .and_then(|s| s.to_str())
+            .is_some_and(|s| matches!(s.to_ascii_lowercase().as_str(), "html" | "htm" | "mdx"))
 }
 
 pub fn canonical(path: &Path) -> Result<PathBuf> {

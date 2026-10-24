@@ -81,7 +81,7 @@ pub fn documents(root: &Path, query: &str) -> Result<Matches> {
                 } else {
                     result.incomplete = true;
                 }
-            } else if kind.is_file() && files::markdown(&path) {
+            } else if kind.is_file() && files::supported_document(&path) {
                 let relative = path
                     .strip_prefix(root)
                     .unwrap()
@@ -119,6 +119,10 @@ mod tests {
         let found = documents(&root, "notes PLAN").unwrap();
         assert_eq!(found.paths, vec![root.join("notes/研究 Plan.MD")]);
         assert_eq!(documents(&root, "").unwrap().paths.len(), 1);
+        for name in ["page.html", "page.htm", "page.mdx", "page.markdown"] {
+            fs::write(root.join(name), "").unwrap();
+        }
+        assert_eq!(documents(&root, "page").unwrap().paths.len(), 4);
         for i in 0..210 {
             fs::write(root.join(format!("{i}.md")), "").unwrap();
         }

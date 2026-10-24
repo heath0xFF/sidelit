@@ -146,6 +146,8 @@ with tempfile.TemporaryDirectory(prefix='sidelit-update-') as temporary, (OUT / 
         subprocess.run([str(BINARY), str(draft)], check=True, timeout=20)
         wait(lambda: 'Original draft file.' in text(), 'draft document')
         initial.unlink()
+        js('[...document.querySelectorAll("button")].find(b=>b.getAttribute("aria-label")==="Edit rendered Markdown").click()')
+        wait(lambda: js('return document.querySelector(".ProseMirror").isContentEditable'), 'explicit rich Edit')
         js('const el=document.querySelector(".ProseMirror p");el.focus();const range=document.createRange();range.selectNodeContents(el);getSelection().removeAllRanges();getSelection().addRange(range);document.execCommand("insertText",false,"Keep this draft through failed updates.")')
         wait(lambda: js('return !!document.querySelector(".tab.active .dirty-dot")'), 'dirty draft')
         check_update('9.9.9')
@@ -179,7 +181,7 @@ with tempfile.TemporaryDirectory(prefix='sidelit-update-') as temporary, (OUT / 
         wait(lambda: request('/status')['ready'], 'restarted updater', timeout=30)
         time.sleep(1)
         session = request('/session', {'capabilities': {}})['sessionId']
-        wait(lambda: 'A little space' in text(), 'restarted without stale CLI arguments', timeout=30)
+        wait(lambda: js('return !!document.querySelector(".empty") && !document.querySelector(".tab")'), 'restarted without stale CLI arguments', timeout=30)
         assert draft.read_text() == 'Keep this draft through failed updates.\n'
         check_update(VERSION)
         # A current version must not be offered for installation again.

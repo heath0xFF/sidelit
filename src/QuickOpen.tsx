@@ -39,7 +39,7 @@ export default function QuickOpen({ workspace, open, close }: {
     {workspace ? <>
       <label className="field-label" htmlFor={`${id}-input`}>File name or path</label>
       <input id={`${id}-input`} autoFocus value={query} maxLength={128} disabled={opening}
-        placeholder="Search Markdown files…" role="combobox" aria-expanded="true"
+        placeholder="Search Markdown, HTML, and MDX…" role="combobox" aria-expanded="true"
         aria-controls={`${id}-results`} aria-autocomplete="list"
         aria-activedescendant={!loading && results.paths[selected] ? `${id}-${selected}` : undefined}
         onChange={(e) => setQuery(e.target.value)}
@@ -50,7 +50,7 @@ export default function QuickOpen({ workspace, open, close }: {
           }
           if (e.key === "Enter" && results.paths[selected]) { e.preventDefault(); void choose(results.paths[selected]); }
         }} />
-      <p className="search-status" role="status">{loading ? "Searching…" : error || (results.paths.length ? `${results.paths.length} ${results.paths.length === 1 ? "match" : "matches"}${results.incomplete ? " · Results limited; refine the search. Some folders may be unavailable." : ""}` : "No matching Markdown files.")}</p>
+      <p className="search-status" role="status">{loading ? "Searching…" : error || (results.paths.length ? `${results.paths.length} ${results.paths.length === 1 ? "match" : "matches"}${results.incomplete ? " · Results limited; refine the search. Some folders may be unavailable." : ""}` : "No matching documents.")}</p>
       <ul id={`${id}-results`} className="quick-results" role="listbox" aria-label="Matching files" aria-busy={loading}>
         {results.paths.map((path, index) => <li key={path} role="none">
           <button id={`${id}-${index}`} role="option" aria-selected={selected === index} tabIndex={-1}

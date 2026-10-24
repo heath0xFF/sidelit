@@ -1,38 +1,230 @@
-# Sidelit interface
+---
+name: Sidelit
+description: A visual work surface beside Rex.
+colors:
+  accent: "#b4a7ff"
+  action: "#6950e8"
+  action-hover: "#5b42d5"
+  on-action: "#ffffff"
+  paper: "#333643"
+  chrome: "#30323e"
+  hover: "#3a3d4b"
+  active: "#414452"
+  rule: "#404350"
+  text: "#d5d6df"
+  muted: "#a5a7b8"
+  line: "#55596b"
+  selected: "#504a6c"
+  warning: "#443c2d"
+  error: "#e06c75"
+  syntax-keyword: "#d797e6"
+  syntax-string: "#98c379"
+  syntax-number: "#d19a66"
+  syntax-function: "#61afef"
+  syntax-variable: "#f08c95"
+  syntax-type: "#e5c07b"
+  light-accent: "#6346c7"
+  light-paper: "#fafafd"
+  light-chrome: "#eeeef4"
+  light-hover: "#e4e4ec"
+  light-active: "#dcdce7"
+  light-rule: "#dedee8"
+  light-text: "#363744"
+  light-muted: "#686a7c"
+  light-line: "#c7c8d6"
+  light-selected: "#e5def9"
+  light-warning: "#fff2d5"
+  light-error: "#b83a34"
+  light-syntax-keyword: "#a626a4"
+  light-syntax-string: "#397a38"
+  light-syntax-number: "#805500"
+  light-syntax-function: "#326ac6"
+  light-syntax-variable: "#b83a34"
+  light-syntax-type: "#805500"
+typography:
+  label:
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+    fontSize: "12px"
+  status:
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+    fontSize: "11px"
+  body:
+    fontFamily: '"IBM Plex Sans Variable", sans-serif'
+    fontSize: "16px"
+    lineHeight: 1.5
+  code:
+    fontFamily: '"Inconsolata Variable", monospace'
+    fontSize: "16px"
+    lineHeight: 1.5
+  heading-1:
+    fontFamily: '"IBM Plex Sans Variable", sans-serif'
+    fontSize: "2em"
+    fontWeight: 650
+    lineHeight: 1.2
+    letterSpacing: "-0.025em"
+  heading-2:
+    fontFamily: '"IBM Plex Sans Variable", sans-serif'
+    fontSize: "1.4375em"
+    fontWeight: 600
+    lineHeight: 1.35
+    letterSpacing: "-0.015em"
+  heading-3:
+    fontFamily: '"IBM Plex Sans Variable", sans-serif'
+    fontSize: "1.125em"
+    fontWeight: 600
+    lineHeight: 1.4
+rounded:
+  control: "6px"
+  surface: "10px"
+  tab: "16px"
+  dialog: "12px"
+  search: "5px"
+spacing:
+  space-1: "4px"
+  space-2: "8px"
+  space-3: "12px"
+  space-4: "16px"
+components:
+  button-primary:
+    backgroundColor: "{colors.action}"
+    textColor: "{colors.on-action}"
+    rounded: "{rounded.control}"
+    padding: "10px 16px"
+  button-primary-compact:
+    backgroundColor: "{colors.action}"
+    textColor: "{colors.on-action}"
+    rounded: "{rounded.control}"
+    padding: "6px 12px"
+  button-ghost:
+    textColor: "{colors.text}"
+    rounded: "{rounded.control}"
+    padding: "6px 10px"
+  button-bordered:
+    textColor: "{colors.text}"
+    rounded: "{rounded.control}"
+    padding: "6px 10px"
+  tab-active:
+    backgroundColor: "{colors.active}"
+    textColor: "{colors.text}"
+    rounded: "{rounded.tab}"
+  mode-switch:
+    backgroundColor: "{colors.hover}"
+    rounded: "{rounded.surface}"
+    padding: "2px"
+  search-input:
+    backgroundColor: "{colors.paper}"
+    textColor: "{colors.text}"
+    rounded: "{rounded.search}"
+    padding: "10px 12px"
+  feedback-input:
+    backgroundColor: "{colors.paper}"
+    textColor: "{colors.text}"
+    rounded: "{rounded.control}"
+    padding: "9px 10px"
+  mdx-badge:
+    padding: "2px 6px"
+  mdx-card:
+    padding: "12px 16px"
+---
 
-## Direction
+# Design System: Sidelit
 
-Operate and Read: a familiar desktop writing tool, as requested. The folder tree, tabs, and toolbar stay where desktop users expect them. The document is the main work area. Branding stays in the empty state, not the working view.
+## Overview
 
-The theme selector offers System (default), One Light, and One Dark. System follows live OS changes; an explicit override is retained. One Light uses a #fafafa document surface and #383a42 text. One Dark uses #282c34 and #abb2bf. Chrome uses neutral gray. Active tabs share the document surface; tree selection and control hover use neutral fills. Blue identifies keyboard focus, links, text selection, and unsaved dots. Amber identifies a disk conflict, never a routine action. Syntax colors follow the One palette, with darker light-theme text colors for contrast. CSS tokens are shared by the shell, Crepe code blocks, and Monaco.
+**Creative North Star: "A visual work surface beside Rex"**
 
-The old boolean theme setting was written automatically on launch. It is not treated as an explicit preference during migration; upgraded installations start in System mode until the user makes a new choice. System, sun, and moon icons use simple SVG geometry with consistent strokes.
+Sidelit uses the observed native Superlogical Rex language: blue-charcoal layers, violet actions, quiet outline icons, soft tabs, and inset panes. These colors are Sidelit approximations, not official Rex tokens. The public documentation website has a different light design and is not the visual source. No Rex logos, proprietary fonts, or artwork are copied.
 
-## Type and space
+The interface stays compact around the document. Preserve the folder tree, tabs, Rendered/Source modes, explicit saves, and contextual feedback to Pi. Dark is the new-install default; explicit System and Light preferences remain valid. HTML and development-server pages retain their own visual identity.
 
-System sans remains in the shell. Rendered writing uses IBM Plex Sans; source, Compare, inline code, and fenced code use Inconsolata. Variable WOFF2 files are bundled through Fontsource, including IBM Plex Sans italic faces, with SIL OFL notices in `public/licenses/`.
+**Key Characteristics:**
 
-UI labels stay at 12–13px. Document text defaults to 16px with 1.5 line height, and can be adjusted from 12–28px using A− / A+, the reset value, or Cmd/Ctrl+Plus, Minus, and 0. Headings, tables, code, and list markers scale with the setting. List marker boxes follow the first paragraph's line height plus its padding. The rendered document has no fixed maximum width. Text uses 80% of the editor pane; each side keeps at least 32px for narrow panes and block controls. Headings have more space above than below. Appearance changes must never remount either editor or change the document buffer.
+- Tonal layers and restrained borders keep the document prominent.
+- Violet distinguishes intentional actions, focus, inspection, and unsaved state.
+- Bundled prose and monospace fonts support offline reading and editing.
 
-The toolbar is 48px high, tabs 36px, and status bar 26px. Shared tokens define 4/8/12/16px spacing, 32px controls, 4/6px radii, neutral states, and quiet separators. Tab icons keep their width beside long filenames. The sidebar starts at 240px and supports pointer and keyboard resizing from 170–440px. The minimum window is 720×480.
+Source of truth: `src/style.css`, `src/App.tsx`, `src/Rich.tsx`, `src/SelectionActions.tsx`, `src/FeedbackComposer.tsx`, and the isolated stylesheet in `src/preview-html.ts`. Existing packaged captures are in `test-results/polish/rex/` (1180×790, 720×630, and minimum 720×480), with `test-results/companion-mdx.png` and `companion-mdx-light.png` for standalone MDX. These are reference artifacts, not a claim of new testing in this documentation pass.
 
-Heading spacing scales with text size. The first document block has no extra top margin, including when Crepe inserts a cursor widget. Lists keep their marker geometry with less space between items. Tables use compact cells and a neutral header fill. Inline code and inactive code lines no longer use blue emphasis. The 10% document gutters, with a 32px minimum, apply at all window widths.
+## Colors
 
-## Behavior
+Dark uses blue-charcoal surfaces and a pale violet accent; Light keeps the same hierarchy on cool pale surfaces. Unprefixed frontmatter tokens describe Dark; `light-*` entries are Light overrides. Action, action-hover, and on-action are shared. The sidebar uses chrome.
 
-Rendered and Source are alternate modes, not split panes. A forced Source fallback remains selected until the user changes mode. Frontmatter stays outside the rendered body, with a short note that metadata can be edited in Source.
+### Primary
 
-A conflict uses a visible banner with Compare, Reload from Disk, and Save Copy. Comparison labels identify the read-only reviewed disk version and the editable draft. Change arrows accept individual disk changes; they have keyboard focus, labels, and Enter/Space support. Save Merged checks the reviewed version. Clean external changes offer a separate read-only review.
+Accent colors serve links, Save, focus rings, inspection outlines, and unsaved dots. The stronger action fill serves primary buttons and the open-sidebar toggle, with white on-action text.
 
-The toolbar keeps Open File, Actions, the mode switch, and Save. The Actions disclosure groups New File, Save As, Quick Open, Open Folder, Session & Recovery, update checks, theme choice, and text size. Appearance controls stay open during adjustment. Escape closes the disclosure and returns focus to Actions; outside pointer input or focus moving to another control also closes it. The existing HTML details control avoids a new WebKit API requirement. Quick Open uses a labelled combobox with keyboard selection, loading/error states, and a bounded results list. Recovery is off by default and states its retention, privacy, and data-loss limits before activation. The HTML `<dialog>` element contains modal focus and returns it to the previous control. Close and Quit use a focused three-choice confirmation and block competing UI actions while they validate live drafts.
+### Neutral
 
-Updates reuse the quiet changes banner, with Install & Restart and Dismiss. Manual checks are in Actions and the native Sidelit menu. Background checks do not open dialogs or report offline errors. Installation uses the existing save prompts, then a modal progress message while editing is locked. A failure returns to the draft with an error; no automatic restart is allowed without approval.
+Paper is the work surface; chrome frames it and backs code blocks. Hover and active provide neutral interaction layers. Rule is the quiet separator; line bounds inputs and overlays. Text and muted distinguish document content from supporting labels. Selected is the violet-tinted text/inspection selection.
 
-Use visible focus rings, restrained hover fills, and no decorative motion. Native menus supply desktop clipboard actions. Edit → Undo/Redo and Cmd/Ctrl+Z / Cmd/Ctrl+Shift+Z use the active editor's own history, including code blocks and editable comparisons. Search inputs retain native text history. No font or image CDN is required.
+### Semantic colors
 
-## Review
+Warning is amber; error is red. Syntax retains keyword, string, number, function, variable, and type roles. The corrected light amber and dark keyword/variable values are normative in frontmatter. `tests/palette.test.ts` covers shell/editor text and syntax contrast, plus isolated MDX syntax, at a minimum 4.5:1 for its enumerated pairs. It is not a blanket accessibility certification.
 
-The visual-polish pass used before/after captures of the same document in the packaged WKWebView at 1180×790 and 720×630 CSS viewports, in both themes. The fixture includes three tabs, long filenames, nested lists, tasks, a table, code, an unsaved edit, and a real disk conflict. Final checks also cover the Actions panel at 720×480, visible focus, and Source. AeroSpace had prevented earlier native resize tests; floating only the isolated test window resolved this. Captures are in `test-results/polish/before/` and `test-results/polish/final/`. No Tern images were available in the request or repository. See `VERIFICATION.md` for checks and remaining limits.
+**The State Color Rule.** Use neutral fills for selected tabs and tree rows, violet for actions and focus, and amber for conflicts and preview warnings. Preserve text labels alongside status color.
 
+## Typography
 
-Inspected packaged macOS captures in dark mode: rendered document, source, and diff. Fixed low-contrast list markers and inline code. The first source capture was taken before paint; the final check waits for visible source text. Automated design checks reported no findings. Light theme was also captured. The native resize request did not change the captured viewport, so narrow-window visual checks remain manual. A user-reported list alignment issue was fixed by removing the first paragraph's top margin inside each list item and matching marker line height to the text. Packaged geometry checks cover tasks, two-digit numbers, wrapped items, and nested lists at 12, 16, 24, and 28px. The font/theme update was inspected in packaged WKWebView in both themes, including rendered code blocks and Monaco. Local font loading, live sizing, persistence, and editor identity were checked. The mechanical design check reported no findings. The recovery/merge update kept the existing palette, type, and spacing. Packaged captures cover frontmatter editing, Quick Open, editable Compare, clean-change review, recovery settings, and the startup restore offer. Follow-up changes removed a duplicate comparison action, corrected a singular result label, and made checkpoint limits more explicit. Native dialogs, screen-reader use, and narrow-window layout still require manual checks.
+System sans labels frame IBM Plex Sans prose and Inconsolata code. UI labels are generally 12–13px; status text is 11px. Document text defaults to 16px and adjusts from 12–28px. Markdown uses 1.5 line height; its relative heading ramp is recorded above, with lower headings at 1em/600. There is no general display-font role.
+
+Standalone MDX uses the same bundled fonts through `SidelitProse` and `SidelitMono` aliases, with 1.6 body line height, 1.25 for h1–h3, and code at 0.95em. It has its own document stylesheet rather than identical Crepe geometry. Fontsource variable WOFF2 files, including prose italics, and SIL OFL notices in `public/licenses/` remain bundled offline.
+
+**The Stable Editor Rule.** Theme and text-size changes update appearance without remounting editors, replacing models, or changing canonical text.
+
+## Layout
+
+The shell fills the window: toolbar (48px), horizontal tabs (40px minimum), flexible work area, and status bar (26px). The explorer starts at 240px and resizes by pointer or keyboard within 170–440px. The main pane has an 8px horizontal/bottom inset. Reuse the 4/8/12/16px spacing rhythm and 30px minimum control height.
+
+Markdown has no maximum reading width: horizontal gutters are `max(32px, 10%)`, with 40px top and 96px bottom padding. Headings have more space above than below; the first document block has no top margin, even after a cursor widget. Lists align markers to the first paragraph at every text size. Tables use compact cells and a neutral header.
+
+At 1000px and below, toolbar action labels collapse to accessible icons. At 900px and below, the toolbar and change notices wrap, Markdown vertical padding becomes 32px/80px, and status gaps narrow. The desktop minimum is 720×480; this is not a mobile navigation system.
+
+Standalone MDX uses 32px vertical padding and `max(24px, 8%)` horizontal gutters. The preview toolbar wraps its controls; fluid frames have no outer padding, while a fixed-width preview has 18px around it.
+
+Selection actions sit beside the captured text. The compact request composer is a single column, capped at 420px wide. At widths of 1000px or more it uses the captured selection anchor when there is room; otherwise it docks at the lower right above the status area. Narrow windows always use the dock. Its height is bounded, with the intent/Hide header and Pi target, delivery actions, and status outside the scrolling context/instruction body. Preserve this split when attached context expands.
+
+## Elevation & Depth
+
+Ordinary chrome, tabs, menus, and the feedback panel use tonal layering and thin borders without shadows. Modal dialogs alone use `0 16px 50px #0003` with a `#0005` backdrop. Menus and feedback sit above content without making every pane a floating card.
+
+**The Inset Pane Rule.** Keep work inside the softly rounded inset pane; use tonal separation for ordinary chrome and reserve the modal shadow for dialogs.
+
+No decorative transitions are defined. Scrolling is immediate; reduced-motion styling explicitly preserves automatic scroll behavior.
+
+## Shapes
+
+Controls use gentle corners, panes and menus use larger corners, and tabs plus the sidebar toggle use capsule-like corners. Close buttons and unsaved dots are circular. Dialog and Quick Open field radii are deliberate existing variants recorded above. Outline SVG icons are generally 16px with a 1.6 stroke on a 24-unit viewBox; tab close icons are 12px. Icons retain their width beside truncated filenames.
+
+## Components
+
+- **Buttons:** quiet transparent defaults, neutral hover, and half-opacity disabled states. Primary buttons use the shared action fill and darker action hover; feedback uses the compact primary variant. Secondary dialog/conflict actions add a line border. Focus is a 2px accent outline inset by 2px; filled actions use a white outline inset by 4px.
+- **Navigation:** soft active tabs, neutral selected tree rows, ellipsized filenames, horizontal tab overflow, and separate named close controls. The mode switch groups two pressed-state buttons; Rendered and Source are alternatives. A fidelity-forced Source fallback stays selected until the user changes mode.
+- **Actions and fields:** the native details disclosure groups file operations, recovery, update checks, theme, and text size. Appearance adjustments keep it open; Escape closes it and returns focus, while outside input/focus closes it. Quick Open is a labelled combobox with keyboard selection, bounded results, and loading/error states. Inputs use quiet line borders, muted placeholders, and visible focus.
+- **Document safety:** frontmatter stays outside rendered prose with a Source note. Amber conflicts expose Compare, Reload from Disk, and Save Copy. Comparison identifies the read-only reviewed disk version and editable draft; change arrows remain labelled and keyboard-operable. Save Merged checks the reviewed hash. Clean external changes have a separate read-only review.
+- **Reading and selection:** rendered Markdown starts read-only. Toolbar Edit enables direct editing; Done editing returns to reading, as do tab and mode changes. Text selection exposes adjacent Explain, Review, and Edit request actions. Request Edit asks Pi for a change; it is separate from the toolbar's local editing control.
+- **Request composer:** one in-memory request retains its intent, instruction, captured context, and delivery state across tabs and Hide/Escape. The toolbar's Request action reopens it. A new selection is offered through Use new selection before sending; it never silently replaces the attachment. The pressed intent uses the selected fill; the summary and document label lead a collapsible Attached context disclosure and one instruction field.
+- **Context and highlight:** amber notices distinguish unsaved captures, changed file context, and live-page uncertainty. Stale file context requires Send the captured version before the first send. The attachment highlight uses a violet tint and outline independently of native text selection, including while the composer is hidden. Reveal selection returns to the attached document and locates the capture; missing or ambiguous text, mismatched elements, and changed page routes fail closed. A closed file must be reopened first.
+- **Pi delivery:** Explain and Review request answers in Pi without file edits and allow an optional instruction; Edit requires an instruction. A remembered connected target or the only connected session may be selected; otherwise the user chooses. The first send attempt freezes target, intent, instruction, and context; Retry delivery reuses the same message ID and payload. Received, queued, and accepted describe delivery only. Answers appear in Pi; Show in Rex is available when the target has a Rex block. Discard request or New request explicitly clears the retained request. There is no batch queue or request persistence after app exit.
+- **Dialogs, recovery, updates:** native modal focus containment and focus return; close/quit use live draft approvals and block competing actions while validating. Recovery is off by default, discloses privacy/retention limits, requires native approval to restore, excludes discarded drafts, and waits for writes before off-and-delete. Updates use the quiet changes banner, explicit Install & Restart, safe draft approvals, and a modal progress state; failure returns to the draft. Background checks stay quiet.
+- **Preview continuity:** HTML/MDX refresh retains a visible anchor and viewport offset, with pixel fallback and up to eight scrolled containers. Memory holds at most 32 document positions, never disk persistence. Restoration yields to user input; the opt-in development-server bridge never restores a different route. MDX appearance updates without remount; HTML/server page styles stay their own.
+- **Standalone MDX primitives:** cards/callouts use a thin border with 12px/16px padding; badges use 2px/6px padding; stacks use a 12px gap. Their current fixed border/badge colors and distinct light string color remain local implementation drift, not shared palette tokens. The sidecar records their actual snippets without promoting those exceptions to new-screen rules.
+
+## Do's and Don'ts
+
+### Do:
+
+- Do preserve the native folder tree, tabs, Rendered/Source switch, explicit Save, and contextual Pi composer.
+- Do keep visible keyboard focus, accessible names on icon controls, native dialogs, and the active editor's Undo/Redo history; disk reloads clear editor history.
+- Do preserve dirty drafts through external changes and failed operations. Reload needs explicit discard consent; Save Merged uses the explicitly reviewed disk hash.
+- Do keep close, quit, and update approvals tied to live document revisions after awaits; retain opt-in, bounded, private recovery separate from originals.
+- Do preserve HTML/MDX reading position through the bounded bridge and yield restoration immediately to user input.
+- Do bundle the existing fonts and OFL notices; keep document list markers aligned throughout the supported text-size range.
+
+### Don't:
+
+- Don't let mount, focus, mode switches, appearance updates, or no-op Save alter canonical text or file bytes; only real editor transactions update drafts.
+- Don't overwrite a disk conflict or replace newer edits with a save acknowledgment. Re-read and hash-check disk before an atomic save; update the baseline separately.
+- Don't execute document HTML or MDX in the privileged webview. Keep local execution in the opaque-origin sandbox without native APIs, and require an explicitly opened development-server origin and opt-in inspection bridge.
+- Don't bypass native path approval, filesystem grants, the Markdown fidelity gate, or frontmatter preservation.
+- Don't install or restart silently, accept unsigned or version-mismatched updates, or treat Pi delivery acknowledgment as completed work.
+- Don't add decorative motion, a permanent chat timeline, remote font dependencies, or Rex's terminal layout.

@@ -142,9 +142,17 @@ jobs:
 
           **This release is ad-hoc signed, not Apple-notarized.** If macOS blocks the first launch, use **System Settings → Privacy & Security → Open Anyway** for Sidelit, only if you trust this download. Do not disable Gatekeeper.
 
-          **New in 0.1.3:** a focused visual-polish pass. The toolbar is simpler, with theme and text-size controls under **Actions**. Tabs and the folder tree use quieter selection states. Headings, lists, tables, and code have more consistent spacing. Branding copy no longer occupies the working view. Existing fonts, themes, fluid document width, and file behavior are retained.
+          **New in 0.2.0: visual previews and feedback beside Rex, Pi, and Neovim.**
 
-          Checked in the packaged macOS app in light and dark themes, at narrow and larger window sizes, including unsaved edits and disk conflicts. Physical keyboard traversal, VoiceOver, native dialogs, and older runtimes still need manual checks.
+          - Render Markdown, HTML, and real standalone MDX, or connect to an existing local development server. Local assets refresh automatically; previews preserve reading position across refreshes.
+          - Select a passage and choose **Explain / Review / Edit**, or inspect an element. Captured context stays attached, warns when stale or unsaved, and can be revealed again. Hiding a request or changing tabs retains its draft.
+          - Send contextual feedback to an existing Pi session through the bundled extension, with native busy-session queuing, duplicate-safe retries, and separate receipt/acceptance states. Answers stay in Pi; **Show in Rex** returns to its terminal.
+          - Run `sidelit setup --pi --skill`, then `/reload` and `/sidelit-status` in the intended Pi session. Use `sidelit doctor --project /absolute/project/path --json` for diagnostics. No Rex plugin or embedded terminal is needed.
+          - Enjoy compact Rex-inspired dark/light styling. Markdown opens for reading with explicit **Edit**; Monaco Source editing and unsaved-change protections remain available.
+
+          Verified with 89 frontend/bridge tests, 23 Rust tests, packaged editor and selection checks, and a real Pi runtime in a separate Rex pane using an offline test model and real file-edit tool. Physical keyboard traversal, VoiceOver, native dialogs, Intel runtime, and older macOS versions still need manual checks.
+
+          Requests are currently one at a time and remain in memory only until app exit. Batch review notes are tracked in `ROADMAP.md`. Standalone MDX imports require your development server; server inspection requires the opt-in preview bridge. Explain/Review express intent to Pi, not an edit-permission boundary. See the README for setup and security details.
 
           **From 0.1.1 or later:** use **Actions → Check for Updates**, then **Install & Restart**.
 

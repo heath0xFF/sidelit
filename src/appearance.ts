@@ -5,7 +5,7 @@ export const MAX_FONT_SIZE = 28;
 export const MONOSPACE_FONT = '"Inconsolata Variable", monospace';
 
 export function themePreference(value: string | null): ThemePreference {
-  return value === "light" || value === "dark" ? value : "system";
+  return value === "light" || value === "system" ? value : "dark";
 }
 
 export function resolvedTheme(

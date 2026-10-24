@@ -4,6 +4,8 @@ import { MONOSPACE_FONT } from "./appearance";
 import type { EditorHistory } from "./history";
 import * as monaco from "monaco-editor/editor/editor.api.js";
 import "monaco-editor/languages/definitions/markdown/register.js";
+import "monaco-editor/languages/definitions/html/register.js";
+import { formatForPath } from './formats';
 import "monaco-editor/features/register.all.js";
 import EditorWorker from "monaco-editor/editor/editor.worker.js?worker";
 
@@ -99,9 +101,10 @@ export default function Source({
   }, [readOnly]);
   useEffect(() => {
     const uri = monaco.Uri.file(path);
+    const language = formatForPath(path) === 'html' ? 'html' : 'markdown';
     let model = models.get(path);
     if (!model) {
-      model = monaco.editor.createModel(text, "markdown", uri);
+      model = monaco.editor.createModel(text, language, uri);
       models.set(path, model);
     }
     if (model.getValue() !== text) model.setValue(text);
@@ -129,7 +132,7 @@ export default function Source({
         ignoreTrimWhitespace: false,
         renderGutterMenu: true,
       });
-      previous = monaco.editor.createModel(original, "markdown");
+      previous = monaco.editor.createModel(original, language);
       diff.setModel({ original: previous, modified: model });
       editor.current = diff;
     } else {
@@ -206,7 +209,7 @@ export default function Source({
       aria-label={
         original !== undefined
           ? "Disk and draft comparison"
-          : "Markdown source editor"
+          : "Document source editor"
       }
     />
   );

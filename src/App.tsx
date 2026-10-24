@@ -10,7 +10,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { api, type Entry, type Snapshot, type RecoveryStatus, type AvailableUpdate } from "./api";
+import { api, type AgentTarget, type Entry, type Snapshot, type RecoveryStatus, type AvailableUpdate, type DeliveryAck } from "./api";
 import {
   DEFAULT_FONT_SIZE,
   MIN_FONT_SIZE,
@@ -28,6 +28,13 @@ import QuickOpen from "./QuickOpen";
 import SessionDialog from "./SessionDialog";
 import Rich, { disposeRich } from "./Rich";
 import type { EditorHistory } from "./history";
+import { feedbackSelection, type FeedbackMessage, type SelectionContext, type FeedbackIntent, type SelectionRect } from "./inspection";
+import SelectionActions from './SelectionActions';
+import Preview from "./Preview";
+import FeedbackComposer from "./FeedbackComposer";
+import DevServerDialog from "./DevServerDialog";
+import { chooseTarget } from './agent-targets';
+import { forgetPreviewPosition } from './preview-position';
 
 let sourceModule: typeof import("./Source") | undefined;
 const Source = lazy(async () => (sourceModule = await import("./Source")));
@@ -45,7 +52,11 @@ function Icon({
     | "close"
     | "sun"
     | "moon"
-    | "system";
+    | "system"
+    | "open"
+    | "server"
+    | "inspect"
+    | "feedback";
 }) {
   const paths = {
     folder: "M3 6h6l2 2h10v11H3z",
@@ -56,6 +67,10 @@ function Icon({
     sun: "M12 2v2 M12 20v2 M2 12h2 M20 12h2 M4.93 4.93l1.42 1.42 M17.65 17.65l1.42 1.42 M4.93 19.07l1.42-1.42 M17.65 6.35l1.42-1.42",
     moon: "M20.9 13.1A9 9 0 0 1 10.9 3.1a7 7 0 1 0 10 10Z",
     system: "M3 4h18v12H3z M8 21h8 M12 16v5",
+    open: "M3 7h6l2 2h9l-3 11H3z M3 7V4h7l2 2h8v3",
+    server: "M3 4h18v16H3z M3 9h18 M7 6.5h.01 M10 6.5h.01 M9 12l-3 2.5 3 2.5 M15 12l3 2.5-3 2.5",
+    inspect: "M8 3H3v5 M16 3h5v5 M3 16v5h5 M8 8l5 13 2-6 6-2z",
+    feedback: "M4 4h16v12H9l-5 4z M8 8h8 M8 12h5",
   };
   return (
     <svg
@@ -165,7 +180,7 @@ function Folder({
         </li>
       )}
       {!entries.length && !error && (
-        <li className="tree-empty">No Markdown files</li>
+        <li className="tree-empty">No previewable documents</li>
       )}
     </ul>
   );
@@ -234,6 +249,23 @@ export default function App() {
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const checkingUpdateRef = useRef(false);
   const [installingUpdate, setInstallingUpdate] = useState(false);
+  const [inspect, setInspect] = useState(false);
+  const [feedback, setFeedback] = useState<FeedbackMessage | null>(null);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [candidate, setCandidate] = useState<FeedbackMessage | null>(null);
+  const [feedbackAnchor, setFeedbackAnchor] = useState<SelectionRect>();
+  const [reveal, setReveal] = useState(0);
+  const [editing, setEditing] = useState(false);
+  const [selection, setSelection] = useState<SelectionContext | null>(null);
+  const selectionSnapshot = useRef<FeedbackMessage | null>(null);
+  const [previewRefresh, setPreviewRefresh] = useState(0);
+  const [targetRefresh, setTargetRefresh] = useState(0);
+  const [targetsLoading, setTargetsLoading] = useState(false);
+  const [targetError, setTargetError] = useState('');
+  const [targets, setTargets] = useState<AgentTarget[]>([]);
+  const [targetId, setTargetId] = useState("");
+  const [serverUrl, setServerUrl] = useState("");
+  const [serverDialog, setServerDialog] = useState(false);
   const [recovery, setRecovery] = useState<RecoveryStatus>({ enabled: false, available: false, savedAt: 0, count: 0, dirty: 0 });
   // The old theme key stored the resolved OS color, not an explicit preference.
   const [theme, setTheme] = useState(() =>
@@ -284,6 +316,70 @@ export default function App() {
   const reason = doc?.reason;
   const mode = doc?.mode;
   const comparison = compare?.path === active ? compare : null;
+  const projectRoot = (!doc || !workspace || doc.path.startsWith(workspace + '/') ? workspace : '') || doc?.path.split("/").slice(0, -1).join("/") || undefined;
+  const captureFeedback = (selection: SelectionContext, intent: FeedbackIntent): FeedbackMessage => {
+    const document = serverUrl
+      ? { url: selection.pageUrl ?? serverUrl, format: "url" as const }
+      : doc
+        ? { path: doc.path, format: doc.format, revision: doc.revision, diskHash: doc.disk.hash, unsaved: dirty(doc) }
+        : { format: "url" as const, url: serverUrl };
+    return {
+      id: globalThis.crypto?.randomUUID?.() ?? String(Date.now()) + "-" + String(Math.random()),
+      source: "sidelit",
+      projectRoot,
+      document: { ...document, capturedAt: new Date().toISOString() },
+      selection: { ...feedbackSelection(selection), anchorText: selection.anchorText },
+      instruction: "",
+      intent,
+    };
+  };
+  const captureSelection = (selected: SelectionContext | null) => {
+    selectionSnapshot.current = selected ? captureFeedback(selected, 'edit') : null;
+    setSelection(selected);
+  };
+  const openFeedback = (selected: SelectionContext, intent: FeedbackIntent = 'edit') => {
+    const next = selected === selection && selectionSnapshot.current
+      ? { ...selectionSnapshot.current, intent } : captureFeedback(selected, intent);
+    if (!feedback) { setFeedback(next); setFeedbackAnchor(selected.rect); }
+    else if (selected.type !== 'document' && (JSON.stringify(next.selection) !== JSON.stringify(feedback.selection) || next.document.path !== feedback.document.path || next.document.url !== feedback.document.url)) setCandidate(next);
+    setFeedbackOpen(true);
+    setInspect(false);
+    setSelection(null);
+  };
+  const dismissFeedback = () => { setFeedbackOpen(false); setSelection(null); setInspect(false); window.getSelection()?.removeAllRanges(); };
+  const previewShortcut = (key: string) => {
+    if (key === 'i') setInspect(value => !value);
+    if (key === 'f') openFeedback(selection ?? { type: 'document', text: '' });
+    if (key === 'r') { setPreviewRefresh(value => value + 1); if (doc) void documents.refresh(doc.path); }
+    if (key === 'e') setSidebar(value => !value);
+  };
+  useEffect(() => { setSelection(null); setInspect(false); setEditing(false); setFeedbackAnchor(undefined); }, [active, serverUrl, mode]);
+  useEffect(() => {
+    if (!feedback) return;
+    let valid = true;
+    setTargets([]); setTargetId(''); setTargetsLoading(true); setTargetError('');
+    void api.agentTargets(feedback.projectRoot).then((list) => {
+      if (!valid) return;
+      setTargets(list);
+      const remembered = localStorage.getItem("sidelit.target:" + (feedback.projectRoot || feedback.document.url || 'default')) ?? "";
+      setTargetId(chooseTarget(list, remembered));
+    }).catch(error => { if (valid) setTargetError(String(error)); }).finally(() => { if (valid) setTargetsLoading(false); });
+    return () => { valid = false; };
+  }, [feedback?.id, targetRefresh]);
+  const sendFeedback = async (target: string, message: FeedbackMessage): Promise<DeliveryAck> => {
+    return api.sendFeedback(target, message);
+  };
+  const attachedHere = feedback && (serverUrl ? !!feedback.document.url && new URL(feedback.document.url).origin === new URL(serverUrl).origin : feedback.document.path === doc?.path);
+  const attachment = useMemo(() => attachedHere && feedback ? { ...feedback.selection, pageUrl: feedback.document.url } : undefined, [attachedHere, feedback?.selection, feedback?.document.url]);
+  const feedbackDocument = feedback?.document.path ? documents.get(feedback.document.path) : undefined;
+  const feedbackStale = !!feedback?.document.path && (!feedbackDocument || feedback.document.revision !== feedbackDocument.revision || feedback.document.diskHash !== feedbackDocument.disk.hash);
+  const revealFeedback = () => {
+    if (!feedback) return;
+    if (feedback.document.url) setServerUrl(feedback.document.url);
+    else if (feedback.document.path && documents.get(feedback.document.path)) { setServerUrl(''); setActive(feedback.document.path); documents.setMode(feedback.document.path, 'rendered'); }
+    else { report('The document is closed. Reopen it to reveal the selection.'); return; }
+    setReveal(value => value + 1); setFeedbackOpen(false);
+  };
   const ask = (title: string, detail: string, choices: string[]) =>
     new Promise<string>((resolve) =>
       setPrompt({ title, detail, choices, resolve }),
@@ -299,6 +395,7 @@ export default function App() {
     documents.open(file, source ? "source" : "rendered");
     if (source) documents.setMode(file.path, "source");
     setActive(file.path);
+    setServerUrl('');
     setCompare(null);
     if (!workspaceRef.current) await root(file.parent);
   }, []);
@@ -433,6 +530,7 @@ export default function App() {
       if (!approvalsCurrent(documents, [approval])) throw new Error("The draft changed. Try closing again.");
       documents.remove(d.path);
       sourceModule?.disposeSource(d.path);
+      forgetPreviewPosition(d.path);
       requestAnimationFrame(() => { if (!documents.get(d.path)) disposeRich(d.path); });
       setActive((current) => current === d.path ? documents.docs.at(-1)?.path ?? "" : current);
       setCompare(null);
@@ -574,13 +672,21 @@ export default function App() {
   };
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (feedbackOpen || inspect || selection) { e.preventDefault(); dismissFeedback(); return; }
+      }
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && ['i', 'f', 'r', 'e'].includes(e.key.toLowerCase()) && !prompt && !quick && !sessionDialog && !serverDialog && !locked && initialized) {
+        e.preventDefault();
+        previewShortcut(e.key.toLowerCase());
+        return;
+      }
       if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === "z") {
         e.preventDefault();
         e.stopPropagation();
         actionRef.current(e.shiftKey ? "redo" : "undo");
         return;
       }
-      if (!(e.metaKey || e.ctrlKey) || prompt || quick || sessionDialog || locked || !initialized) return;
+      if (!(e.metaKey || e.ctrlKey) || prompt || quick || sessionDialog || serverDialog || feedbackOpen || locked || !initialized) return;
       const k = e.key.toLowerCase();
       if (!e.altKey && ["+", "=", "-", "0"].includes(k)) {
         e.preventDefault();
@@ -619,7 +725,7 @@ export default function App() {
     <div className="app" inert={locked || !initialized}>
       <header className="toolbar">
         <button
-          className="icon-button"
+          className={'icon-button sidebar-toggle' + (sidebar ? ' is-open' : '')}
           title="Toggle sidebar"
           aria-label="Toggle sidebar"
           aria-expanded={sidebar}
@@ -627,9 +733,22 @@ export default function App() {
         >
           <Icon type="sidebar" />
         </button>
-        <button onClick={() => void api.choose(false).catch(report)} title="⌘O">
-          Open File
+        <button className="toolbar-action" aria-label="Open File" onClick={() => void api.choose(false).catch(report)} title="Open File (⌘O)">
+          <Icon type="open" /><span>Open File</span>
         </button>
+        <button className="toolbar-action" aria-label="Dev Server" onClick={() => setServerDialog(true)} title="Connect to a running local development server">
+          <Icon type="server" /><span>Dev Server</span>
+        </button>
+        {(doc || serverUrl || feedback) && (
+          <>
+            <button className={'toolbar-action' + (inspect ? ' tool-active' : '')} aria-label={inspect ? 'Inspecting…' : 'Inspect'} aria-pressed={inspect} onClick={() => { setFeedbackOpen(false); setInspect((value) => !value); }} title="Inspect an element (⌘⇧I)">
+              <Icon type="inspect" /><span>{inspect ? "Inspecting…" : "Inspect"}</span>
+            </button>
+            <button className={'toolbar-action feedback-button' + (selection ? ' tool-active' : '')} aria-label="Feedback" onClick={() => openFeedback(selection ?? { type: "document", text: "" })} title={selection ? 'Feedback on selection (⌘⇧F)' : 'Document feedback (⌘⇧F)'}>
+              <Icon type="feedback" /><span>{feedback ? 'Request' : 'Feedback'}</span>
+            </button>
+          </>
+        )}
         <details
           className="app-menu"
           ref={actionsRef}
@@ -668,8 +787,8 @@ export default function App() {
                   onChange={(event) => setTheme(themePreference(event.target.value))}
                 >
                   <option value="system">System</option>
-                  <option value="light">One Light</option>
-                  <option value="dark">One Dark</option>
+                  <option value="light">Light</option>
+                  <option value="dark">Dark</option>
                 </select>
               </label>
               <div className="font-controls" role="group" aria-label="Document font size">
@@ -697,12 +816,13 @@ export default function App() {
           </div>
         </details>
         <div className="toolbar-space" />
-        {doc && (
+        {doc?.format === 'markdown' && mode === 'rendered' && !serverUrl && <button aria-label="Edit rendered Markdown" aria-pressed={editing} onClick={() => setEditing(value => !value)}>{editing ? 'Done editing' : 'Edit'}</button>}
+        {doc && !serverUrl && (
           <div className="mode-switch" aria-label="Editing mode">
             <button
               aria-pressed={mode === "rendered"}
               disabled={!!reason}
-              title={reason ?? "Rendered editing (⌘\\)"}
+              title={reason ?? "Rendered preview (⌘\\)"}
               onClick={() => {
                 documents.setMode(doc.path, "rendered");
                 setCompare(null);
@@ -722,7 +842,8 @@ export default function App() {
             </button>
           </div>
         )}
-        {doc && (
+        {serverUrl && <button className="server-close" onClick={() => setServerUrl("")}>Close server preview</button>}
+        {doc && !serverUrl && (
           <button
             className="save-button"
             disabled={doc.saving}
@@ -803,6 +924,7 @@ export default function App() {
                     aria-current={d.path === active ? "page" : undefined}
                     onClick={() => {
                       setActive(d.path);
+                      setServerUrl('');
                       setCompare(null);
                     }}
                   >
@@ -842,7 +964,7 @@ export default function App() {
           )}
           {doc ? (
             <>
-              {doc.pending && (
+              {doc.pending && !serverUrl && (
                 <section className="conflict" role="status">
                   <div>
                     <strong>
@@ -869,13 +991,13 @@ export default function App() {
                   </div>
                 </section>
               )}
-              {doc.review && !doc.pending && !comparison && <section className="changes-banner">
+              {doc.review && !doc.pending && !comparison && !serverUrl && <section className="changes-banner">
                 <span>Updated from disk. Review the latest external change.</span>
                 <button onClick={() => setCompare({ path: doc.path, kind: "review", disk: doc.review! })}>Review changes</button>
                 <button onClick={() => documents.update(doc.path, { review: undefined })}>Dismiss</button>
               </section>}
-              {mode === "rendered" && /^(---|\+\+\+)[ \t]*\r?\n/.test(doc.text) && !comparison && <div className="fidelity-note">Frontmatter is kept unchanged. Use Source to edit metadata.</div>}
-              {reason && !comparison && (
+              {mode === "rendered" && /^(---|\+\+\+)[ \t]*\r?\n/.test(doc.text) && !comparison && !serverUrl && <div className="fidelity-note">Frontmatter is kept unchanged. Use Source to edit metadata.</div>}
+              {reason && !comparison && !serverUrl && (
                 <div className="fidelity-note">
                   {reason} No content has been removed.
                 </div>
@@ -909,6 +1031,21 @@ export default function App() {
                     />
                   </Suspense>
                 </>
+              ) : serverUrl ? (
+                <Preview
+                  key={serverUrl}
+                  format="url"
+                  url={serverUrl}
+                  refresh={previewRefresh}
+                  onDismiss={dismissFeedback}
+                  onShortcut={previewShortcut}
+                  inspect={inspect}
+                  onText={captureSelection}
+                  onElement={openFeedback}
+                  attachment={attachment}
+                  reveal={reveal}
+                  onError={report}
+                />
               ) : mode === "source" ? (
                 <Suspense
                   fallback={
@@ -925,28 +1062,68 @@ export default function App() {
                     onChange={(text) => documents.edit(doc.path, text)}
                   />
                 </Suspense>
-              ) : (
+              ) : doc.format === "markdown" ? (
                 <Rich
                   key={doc.path}
                   path={doc.path}
                   text={doc.text}
+                  refresh={refresh + previewRefresh}
                   onChange={(text) => documents.edit(doc.path, text)}
                   onError={report}
                   history={history}
+                  inspect={inspect}
+                  onTextSelection={captureSelection}
+                  onElementInspect={openFeedback}
+                  editable={editing}
+                  attachment={attachment}
+                  reveal={reveal}
+                />
+              ) : (
+                <Preview
+                  key={doc.path}
+                  path={doc.path}
+                  source={doc.text}
+                  format={doc.format}
+                  dark={dark}
+                  fontSize={size}
+                  refresh={refresh + previewRefresh}
+                  onDismiss={dismissFeedback}
+                  onShortcut={previewShortcut}
+                  inspect={inspect}
+                  onText={captureSelection}
+                  onElement={openFeedback}
+                  attachment={attachment}
+                  reveal={reveal}
+                  onError={report}
                 />
               )}
               <footer className="statusbar">
-                <span title={doc.path}>{doc.path}</span>
+                <span title={serverUrl || doc.path}>{serverUrl || doc.path}</span>
                 <span role="status">
-                  {doc.pending
+                  {serverUrl ? 'Development server' : doc.pending
                     ? "Disk conflict"
                     : dirty(doc)
                       ? "Unsaved changes"
                       : doc.notice || "All changes saved"}
                 </span>
-                <span>{doc.text.includes("\r\n") ? "CRLF" : "LF"} · UTF-8</span>
+                {!serverUrl && <span>{doc.text.includes("\r\n") ? "CRLF" : "LF"} · UTF-8</span>}
               </footer>
             </>
+          ) : serverUrl ? (
+            <Preview
+              key={serverUrl}
+              format="url"
+              url={serverUrl}
+              refresh={previewRefresh}
+              onDismiss={dismissFeedback}
+              onShortcut={previewShortcut}
+              inspect={inspect}
+              onText={captureSelection}
+              onElement={openFeedback}
+              attachment={attachment}
+              reveal={reveal}
+              onError={report}
+            />
           ) : (
             <section className="empty">
               <div className="empty-mark" aria-hidden="true">
@@ -955,14 +1132,14 @@ export default function App() {
                 <span />
               </div>
               <h1>
-                A little space
+                See the result.
                 <br />
-                for your next thought.
+                Stay in your terminal.
               </h1>
               <p>
-                Read what your agent wrote.
+                Open Markdown, HTML, or MDX.
                 <br />
-                Make it your own, right on the page.
+                Select a detail and send your instruction to Pi.
               </p>
               <div className="empty-actions">
                 <button onClick={() => void newFile()}>New Markdown file</button>
@@ -970,7 +1147,7 @@ export default function App() {
                   className="primary"
                   onClick={() => void api.choose(false).catch(report)}
                 >
-                  Open a Markdown file
+                  Open a document
                 </button>
                 <button onClick={() => void api.choose(true).catch(report)}>
                   Browse a folder
@@ -992,6 +1169,28 @@ export default function App() {
         <p role="status">Downloading, checking the signature, and installing. Sidelit will restart when finished.</p>
         <p>Keep Sidelit open. The download can take up to two minutes. macOS may ask for permission to replace the app.</p>
       </Dialog>}
+      {serverDialog && <DevServerDialog value={serverUrl} onOpen={(url) => { setCompare(null); setServerUrl(url); setServerDialog(false); }} onClose={() => setServerDialog(false)} />}
+      {feedback && <FeedbackComposer
+        key={feedback.id}
+        context={feedback}
+        open={feedbackOpen}
+        anchor={attachedHere ? feedbackAnchor : undefined}
+        stale={feedbackStale}
+        candidate={candidate}
+        onReplace={() => { if (candidate) { setFeedback({ ...candidate, intent: feedback.intent, instruction: feedback.instruction }); setCandidate(null); setFeedbackAnchor(undefined); } }}
+        onChange={change => setFeedback(value => value ? { ...value, ...change } : value)}
+        onReveal={revealFeedback}
+        onDiscard={() => { setFeedback(null); setCandidate(null); dismissFeedback(); }}
+        targets={targets}
+        targetId={targetId}
+        loading={targetsLoading}
+        targetError={targetError}
+        onRefreshTargets={() => setTargetRefresh(value => value + 1)}
+        onTarget={id => { setTargetId(id); localStorage.setItem('sidelit.target:' + (feedback.projectRoot || feedback.document.url || 'default'), id); }}
+        onSend={sendFeedback}
+        onClose={dismissFeedback}
+      />}
+      {selection && !feedbackOpen && !prompt && <SelectionActions selection={selection} onAction={intent => openFeedback(selection, intent)} />}
       {quick && <QuickOpen workspace={workspace} open={open} close={() => setQuick(false)} />}
       {sessionDialog && <SessionDialog status={recovery} startup={!initialized} restore={restore}
         change={changeRecovery} close={() => setSessionDialog(false)} quit={api.quit} />}
