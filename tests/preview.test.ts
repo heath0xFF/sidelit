@@ -18,6 +18,29 @@ beforeAll(() => {
 });
 
 describe('preview correctness', () => {
+  it('hides Markdown comments without executing their contents or changing literal code', async () => {
+    const source = '# Product\n\n<!-- impeccable:product-schema 1 -->\n<!-- $hidden$ <script>globalThis.__commentExecuted = true</script> -->\n\nRead <!-- inline -->this.\n\n`<!-- literal -->`\n\n```text\n<!-- fenced -->\n```';
+    const result = await preparePreview(source, '/project/PRODUCT.md', 'markdown', false, '', async () => { throw Error('unexpected asset'); });
+    const page = new DOMParser().parseFromString(result.html, 'text/html');
+    const { code } = JSON.parse(page.getElementById('sidelit-mdx')!.textContent!);
+    const Component = new Function(code)(runtime).default;
+    const html = renderToStaticMarkup(createElement(Component));
+    expect(html).toContain('<h1>Product</h1>');
+    expect(html).toContain('<p>Read this.</p>');
+    expect(html).toContain('&lt;!-- literal --&gt;');
+    expect(html).toContain('&lt;!-- fenced --&gt;');
+    expect(code).not.toMatch(/impeccable|hidden|inline|__commentExecuted/);
+    expect((globalThis as any).__commentExecuted).toBeUndefined();
+    expect(page.querySelector('meta[http-equiv]')!.getAttribute('content')).toContain("script-src 'nonce-");
+    expect(result.warnings).toEqual([]);
+  });
+  it.each([
+    '<!-- safe --><script>bad()</script><!-- safe -->',
+    '<!-- safe -->\n<img src=x onerror=bad()>',
+    '<!-- unclosed',
+  ])('rejects raw HTML and incomplete comments in Markdown preview: %s', async source => {
+    await expect(preparePreview(source, '/project/PRODUCT.md', 'markdown', false, '', async () => { throw Error('unexpected'); })).rejects.toThrow(/preserved in Source/);
+  });
   it('serializes Unicode selection context within the native byte limit', () => {
     const selection = feedbackSelection({ type: 'element', text: '語'.repeat(1200), selector: '語'.repeat(500), classes: Array(8).fill('語'.repeat(80)), surrounding: '語'.repeat(1600), styles: Object.fromEntries(['display', 'position', 'width', 'height', 'margin', 'padding', 'color', 'background-color', 'font-size', 'font-weight'].map(key => [key, '語'.repeat(100)])) });
     expect(new TextEncoder().encode(JSON.stringify(selection)).length).toBeLessThan(8000);

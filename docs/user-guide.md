@@ -37,19 +37,31 @@ For maintainers, [RELEASING.md](../RELEASING.md) explains the GitHub build and r
 
 Sidelit keeps the terminal and editor as the primary development environment:
 
-- Ordinary Markdown opens for reading in the Crepe renderer, with GFM tables, tasks, images, links, and code blocks. Choose **Edit** for rich editing or **Source** for Monaco. Markdown with Mermaid diagrams uses a read-only sandboxed preview; edit it in Source.
+- Ordinary Markdown opens for reading in the Crepe renderer, with GFM tables, tasks, images, links, and code blocks. Choose **Edit** for rich editing or **Source** for Monaco. Markdown with Mermaid diagrams or HTML comments uses a read-only sandboxed preview; edit it in Source. Comments stay hidden and unchanged.
 - HTML and MDX open in a bounded preview surface. HTML is sanitized before it enters a sandboxed iframe; page scripts are off until you explicitly enable them.
 - Standalone MDX uses the official MDX compiler: JSX, expressions, locally exported components, GFM, highlighted code, and built-in Callout, Card, Badge, and Stack components. Compiled code runs only inside the isolated preview. Imports (including dynamic imports) require a development-server preview; Sidelit does not recreate your framework runtime.
 - Use Dev Server to connect to a running local URL such as http://localhost:5173. Sidelit does not start or manage that process.
 - Select text to reveal **Explain / Review / Edit** beside the passage. Inspect an element or use Feedback for a document-level request. The composer captures bounded context and sends it to a selected Pi session.
 
-Attached selections remain highlighted while you compose. **Hide** or Escape retains the request in memory; reopening Feedback resumes it across tab changes and refresh. **Discard request** explicitly removes it. A new selection can replace the attachment without erasing your instruction. Expand **Attached context** to see the excerpt and technical details; **Reveal selection** returns to it. Shortened excerpts, changed documents and unsaved drafts are disclosed. Sending an earlier captured version requires an explicit choice. Requests last until app exit, with one active request at a time; batch review notes are not implemented.
-
-Batch review notes and their acceptance criteria are tracked in [ROADMAP.md](../ROADMAP.md).
+Attached selections remain highlighted while you compose. **Hide** or Escape clears the highlight but retains the request in memory. The toolbar shows **Unsent draft**, even in a narrow window; click it to resume across tab changes and refresh. After delivery starts, it shows **View request** instead, including when a receipt is missing. **Discard request** explicitly removes it. A new selection can replace the attachment without erasing your instruction. Expand **Attached context** to see the excerpt and technical details; **Reveal selection** returns to it. Shortened excerpts, changed documents and unsaved drafts are disclosed. Sending an earlier captured version requires an explicit choice. There is one active composer at a time. Quick requests are held in memory; **Add to review** saves one locally. Normal Quit, window close, and Install & Restart prompt for unsent requests or unsaved note edits: **Save to Notes**, **Discard**, or **Cancel**. Save to Notes waits for local storage and never sends to Pi. A failed save, full list, or changed request cancels the exit and retains the draft. Unchanged saved notes need no prompt. Force-quit or a crash can still lose a quick draft.
 
 Explain and Review send explicit answer-only instructions, not an edit-permission sandbox. Answers stay in Pi; **Show in Rex** focuses the associated terminal without typing into it.
 
 The core loop is Render, Inspect, Select, Instruct Agent, Refresh. File watchers continue to refresh clean buffers after Pi edits; a dirty draft remains protected by the existing conflict flow.
+
+### Collect review notes
+
+1. Select text, inspect an element, or open document feedback. Choose Explain, Review, or Edit and enter an instruction. **Add to review** saves the note without sending it.
+2. Keep reading. Open **Notes** to edit or remove notes and reveal their captured selections. **Save note** writes changes to a saved note; **Cancel changes** leaves its saved version intact. A closed document must be reopened through the normal file-opening flow before reveal.
+3. Select notes from one project (or one live-page origin when no workspace is open). Inspect **Exact payload**, choose the intended Pi session, and use **Send selected to Pi** or Cmd/Ctrl+Enter. Edit notes need a change instruction. Different projects need separate batches.
+
+The batch reaches Pi as one message, retaining each note's intent and context. Its ID, target and payload are saved before delivery and cannot change during retries. After a lost acknowledgment, **Check receipt** queries Pi without sending; **Retry batch** sends the same message. The list permits only one pending delivery record. **Remove attempted notes** clears that record and its notes so you can send the next batch. It does not cancel work in Pi. A disconnected destination is not silently replaced.
+
+Notes are saved through **Add to review**, **Save note**, or **Save to Notes** when quitting, not while typing in the composer. They survive app exit independently of document recovery. Restored captures need explicit acknowledgment before sending because in-memory document revisions do not prove identity across restarts. Nothing sends on startup. Notes do not grant file access or reopen files automatically.
+
+Storage is local to Sidelit's application-support directory, under `review/notes.json`. It uses private OS permissions and atomic writes, not encryption. Limits: 20 notes, 512 KiB of saved state, and 30 KiB per batch. No document files are changed. Notes remain until removed; **Delete all saved notes** removes this storage after confirmation. If saving a note fails, the composer keeps the draft and shows the error; retry before leaving it. A force-quit during a save can lose the latest change.
+
+Batch delivery needs the matching Pi extension: run `sidelit setup --pi --skill` from the updated app, then `/reload` in Pi. Older receivers reject batches; the quick-request path remains supported. Acceptance means Pi consumed the message, not that work is complete. There is no automatic resolution or task history.
 
 ### Pi and Rex setup
 
@@ -181,7 +193,7 @@ Each open file has one canonical text buffer, a disk snapshot and SHA-256 hash, 
 
 - Opening, focusing, changing tabs or modes, and no-op Save do not rewrite a file. Crepe does not serialize its initial document into the buffer.
 - A real rich edit can normalize supported syntax: list markers, whitespace, tables, or fences. **Arbitrary Markdown round trips are not byte-perfect.** Use Source for exact syntax control. Undoing back to the loaded rendered document restores its original Markdown bytes.
-- YAML (`---`) and TOML (`+++`) frontmatter stays byte-for-byte unchanged while you edit the rendered body. Use Source to edit metadata. Markdown with Mermaid blocks uses a read-only Rendered preview; edit the document in Source. Unclosed frontmatter, raw HTML, reference syntax, math, code metadata, and recognized extensions still use Source with an explanation. The conservative gate can also route ordinary dollar signs or large documents to Source. Source stays selected until you explicitly change mode.
+- YAML (`---`) and TOML (`+++`) frontmatter stays byte-for-byte unchanged while you edit the rendered body. Use Source to edit metadata. Markdown with Mermaid blocks or complete HTML comments uses a read-only Rendered preview; edit the document in Source. Comments stay hidden and unchanged. Unclosed frontmatter or comments, other raw HTML, reference syntax, math, code metadata, and recognized extensions still use Source with an explanation. The conservative gate can also route ordinary dollar signs or large documents to Source. Source stays selected until you explicitly change mode.
 - UTF-8 and uniform LF/CRLF are supported. Rich edits preserve uniform CRLF. Mixed line endings can normalize after an edit.
 - A clean buffer refreshes after an external change. **Review changes** shows its previous disk version beside the current text, both read-only. Only the latest previous version is kept in memory.
 - A dirty buffer keeps its draft and shows **Compare**, **Reload from Disk**, and **Save Copy**. Reload asks before discarding a draft.
@@ -190,7 +202,7 @@ Each open file has one canonical text buffer, a disk snapshot and SHA-256 hash, 
 - Every Save re-reads disk, even before a watcher event arrives. A hash mismatch prevents overwrite. Saves use a synced temporary file in the same directory followed by replacement. No-op Save does not change the file's modification time.
 - Directory watchers survive atomic rename saves and report deletion/recreation. notify's maintained debounce helper coalesces chunked/duplicate events. A writer that pauses longer than the debounce interval can expose an intermediate version; a later event refreshes it again.
 - Own saves are recognized by content identity, not a time-based event blackout. Stale reads and save replies cannot replace newer drafts.
-- Close and Quit block new UI actions while checking live document revisions. A changed draft or an unfinished Save stops the close rather than using an old approval.
+- Close and Quit block new UI actions while checking live document revisions. A changed draft or an unfinished Save stops the close rather than using an old approval. App exit also checks unsent feedback and unsaved note edits. Discard consent does not delete the request if a later confirmation is canceled or the update fails; a successful Save to Notes remains saved even if exit is canceled.
 
 Optimistic checks are **not a filesystem lock**. An arbitrary writer can still race the final check and replacement. Keep version control or backups for important work.
 

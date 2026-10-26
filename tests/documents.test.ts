@@ -1,5 +1,6 @@
 import readme from "../README.md?raw";
 import userGuide from "../docs/user-guide.md?raw";
+import product from "../PRODUCT.md?raw";
 import { describe, expect, it, vi } from "vitest";
 import { Documents, dirty, type Transport } from "../src/documents";
 import { sourceReason, lineEndings, frontmatter, replaceBody } from "../src/fidelity";
@@ -257,6 +258,57 @@ describe("frontmatter", () => {
 });
 
 describe("fidelity gate", () => {
+  const comments = '# Product\r\n\r\n<!-- impeccable:product-schema 1 -->\r\n\r\nRead <!-- hidden $ metadata -->this.\r\n';
+  it('previews comments read-only and preserves them across modes, saves, and conflicts', async () => {
+    const { store, disk } = setup(comments);
+    expect(sourceReason(comments)).toBeTruthy();
+    expect(sourceReason(comments, true)).toBeUndefined();
+    expect(store.get('/a.md')).toMatchObject({ mode: 'rendered', previewOnly: true, revision: 0 });
+    store.setMode('/a.md', 'source');
+    store.setMode('/a.md', 'rendered');
+    expect(await store.save('/a.md')).toBe(true);
+    expect(store.get('/a.md')).toMatchObject({ text: comments, disk: snap(comments), revision: 0, previewOnly: true });
+    store.setMode('/a.md', 'source');
+    const draft = comments.replace('Read', 'Review');
+    store.edit('/a.md', draft);
+    store.setMode('/a.md', 'rendered');
+    disk('# External');
+    await store.refresh('/a.md');
+    expect(await store.save('/a.md')).toBe(false);
+    expect(store.get('/a.md')).toMatchObject({ text: draft, previewOnly: true, pending: { snapshot: snap('# External') } });
+    expect(dirty(store.get('/a.md')!)).toBe(true);
+  });
+  it('rechecks comment previews after disk changes and recovery', async () => {
+    const { store, disk } = setup('# Plain');
+    disk(comments);
+    await store.refresh('/a.md');
+    expect(store.get('/a.md')).toMatchObject({ mode: 'rendered', previewOnly: true });
+    disk('# Plain again');
+    await store.refresh('/a.md');
+    expect(store.get('/a.md')).toMatchObject({ mode: 'rendered', previewOnly: false });
+    store.remove('/a.md');
+    store.restore({ path: '/a.md', disk: snap('# Plain'), text: comments, mode: 'rendered' });
+    expect(store.get('/a.md')).toMatchObject({ text: comments, mode: 'rendered', previewOnly: true });
+  });
+  it.each([
+    '<!-- one --><!-- two -->',
+    '<!-- multiline\n$hidden$ <script>hidden()</script>\n-->\n\n# Visible',
+    '> <!-- quote -->\n\n- Item <!-- inline -->',
+  ])('allows complete comments only in read-only preview: %s', text => {
+    expect(sourceReason(text)).toBeTruthy();
+    expect(sourceReason(text, true)).toBeUndefined();
+  });
+  it.each([
+    '<!-- unclosed',
+    '<!-- safe --><script>bad()</script><!-- safe -->',
+    '<!-- safe -->\n<div>HTML</div>',
+    '<!-- safe -->\n\n$x$',
+    '<!-- safe -->\n\n[x](javascript:alert)',
+    '<!-- safe -->\n\n[x][ref]\n\n[ref]: https://example.com',
+  ])('keeps other unsupported syntax out of comment previews: %s', text => {
+    expect(sourceReason(text, true)).toBeTruthy();
+    expect(setup(text).store.get('/a.md')).toMatchObject({ mode: 'source', previewOnly: false });
+  });
   const diagram = "---\r\ntitle: Keep\r\n---\r\n\r\n# Plan\r\n\r\n```mermaid\r\nflowchart LR\r\n A --> B\r\n```\r\n";
   it("previews Mermaid read-only without changing bytes, drafts, or save baselines", async () => {
     const { store, disk } = setup(diagram);
@@ -326,6 +378,7 @@ describe("fidelity gate", () => {
   );
   it.each([
     ["README", readme, true],
+    ["product record", product, true],
     ["user guide", userGuide, false],
   ] as const)("opens the %s in its correct rendered view without changing bytes", async (_name, text, previewOnly) => {
     const { store } = setup(text);

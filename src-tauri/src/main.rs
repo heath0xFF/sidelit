@@ -5,6 +5,7 @@ mod integrations;
 mod menu;
 mod preview;
 mod recovery;
+mod review;
 mod search;
 mod service;
 mod updates;
@@ -132,6 +133,7 @@ fn main() {
         .manage(updates::Updates::default())
         .manage(service::Service::default())
         .manage(recovery::Recovery::default())
+        .manage(review::Review::default())
         .manage(preview::Previews::default())
         .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
             let (args, ack) = split_ack(args.into_iter().skip(1).collect());
@@ -172,6 +174,9 @@ fn main() {
             service::search_documents,
             agents::agent_targets,
             agents::send_feedback,
+            agents::send_review,
+            review::load_review,
+            review::store_review,
             agents::feedback_status,
             agents::focus_agent,
             service::recovery_status,

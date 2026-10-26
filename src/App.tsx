@@ -21,7 +21,7 @@ import {
   resolvedTheme,
 } from "./appearance";
 import { Documents, dirty, type Document } from "./documents";
-import { approveClose, approvalsCurrent, type CloseApproval } from "./closing";
+import { approveClose, approvalsCurrent, approveFeedbackClose, feedbackApprovalCurrent, type CloseApproval, type FeedbackCloseState } from "./closing";
 import { RecoveryWriter, sessionSnapshot } from "./recovery";
 import Dialog from "./Dialog";
 import QuickOpen from "./QuickOpen";
@@ -32,6 +32,8 @@ import { feedbackSelection, type FeedbackMessage, type SelectionContext, type Fe
 import SelectionActions from './SelectionActions';
 import Preview from "./Preview";
 import FeedbackComposer from "./FeedbackComposer";
+import ReviewPanel from './ReviewPanel';
+import { ReviewNotes } from './review';
 import DevServerDialog from "./DevServerDialog";
 import { chooseTarget } from './agent-targets';
 import { forgetPreviewPosition } from './preview-position';
@@ -56,7 +58,8 @@ function Icon({
     | "open"
     | "server"
     | "inspect"
-    | "feedback";
+    | "feedback"
+    | "notes";
 }) {
   const paths = {
     folder: "M3 6h6l2 2h10v11H3z",
@@ -71,6 +74,7 @@ function Icon({
     server: "M3 4h18v16H3z M3 9h18 M7 6.5h.01 M10 6.5h.01 M9 12l-3 2.5 3 2.5 M15 12l3 2.5-3 2.5",
     inspect: "M8 3H3v5 M16 3h5v5 M3 16v5h5 M8 8l5 13 2-6 6-2z",
     feedback: "M4 4h16v12H9l-5 4z M8 8h8 M8 12h5",
+    notes: "M4 5h2v2H4z M10 6h10 M4 11h2v2H4z M10 12h10 M4 17h2v2H4z M10 18h10",
   };
   return (
     <svg
@@ -199,6 +203,9 @@ function PromptDialog({
   prompt: Prompt;
   done: (choice: string) => void;
 }) {
+  const cancel = useRef<HTMLButtonElement>(null);
+  // Focus after showModal; mount-time autofocus runs while the app is inert.
+  useEffect(() => { cancel.current?.focus(); }, [prompt]);
   return (
     <Dialog title={prompt.title} onClose={() => done("Cancel")}>
       <p>{prompt.detail}</p>
@@ -206,8 +213,8 @@ function PromptDialog({
         {prompt.choices.map((choice) => (
           <button
             key={choice}
-            autoFocus={choice === "Cancel"}
-            className={choice === "Save" ? "primary" : ""}
+            ref={choice === "Cancel" ? cancel : undefined}
+            className={choice === "Save" || choice === "Save to Notes" ? "primary" : ""}
             onClick={() => done(choice)}
           >
             {choice}
@@ -252,6 +259,16 @@ export default function App() {
   const [inspect, setInspect] = useState(false);
   const [feedback, setFeedback] = useState<FeedbackMessage | null>(null);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [feedbackAttemptedId, setFeedbackAttemptedId] = useState<string>();
+  const unsentFeedback = !!feedback && feedback.id !== feedbackAttemptedId;
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [reviewEditingId, setReviewEditingId] = useState<string>();
+  const feedbackRef = useRef<FeedbackCloseState>({ message: null, attempted: false });
+  feedbackRef.current = { message: feedback, editingId: reviewEditingId, attempted: !!feedback && !unsentFeedback };
+  const [reviewAttachmentId, setReviewAttachmentId] = useState<string>();
+  const reviews = useMemo(() => new ReviewNotes(api), []);
+  const reviewState = useSyncExternalStore(reviews.subscribe, reviews.snapshot);
+  useEffect(() => { void reviews.load(); }, [reviews]);
   const [candidate, setCandidate] = useState<FeedbackMessage | null>(null);
   const [feedbackAnchor, setFeedbackAnchor] = useState<SelectionRect>();
   const [reveal, setReveal] = useState(0);
@@ -343,10 +360,16 @@ export default function App() {
     if (!feedback) { setFeedback(next); setFeedbackAnchor(selected.rect); }
     else if (selected.type !== 'document' && (JSON.stringify(next.selection) !== JSON.stringify(feedback.selection) || next.document.path !== feedback.document.path || next.document.url !== feedback.document.url)) setCandidate(next);
     setFeedbackOpen(true);
+    setReviewOpen(false);
+    setReviewAttachmentId(undefined);
     setInspect(false);
     setSelection(null);
   };
-  const dismissFeedback = () => { setFeedbackOpen(false); setSelection(null); setInspect(false); window.getSelection()?.removeAllRanges(); };
+  const dismissFeedback = () => { setFeedbackOpen(false); setReviewAttachmentId(undefined); setSelection(null); setInspect(false); window.getSelection()?.removeAllRanges(); };
+  const clearFeedback = () => {
+    feedbackRef.current = { message: null, attempted: false };
+    setFeedback(null); setCandidate(null); setReviewEditingId(undefined); dismissFeedback();
+  };
   const previewShortcut = (key: string) => {
     if (key === 'i') setInspect(value => !value);
     if (key === 'f') openFeedback(selection ?? { type: 'document', text: '' });
@@ -367,18 +390,24 @@ export default function App() {
     return () => { valid = false; };
   }, [feedback?.id, targetRefresh]);
   const sendFeedback = async (target: string, message: FeedbackMessage): Promise<DeliveryAck> => {
+    setFeedbackAttemptedId(message.id);
     return api.sendFeedback(target, message);
   };
-  const attachedHere = feedback && (serverUrl ? !!feedback.document.url && new URL(feedback.document.url).origin === new URL(serverUrl).origin : feedback.document.path === doc?.path);
-  const attachment = useMemo(() => attachedHere && feedback ? { ...feedback.selection, pageUrl: feedback.document.url } : undefined, [attachedHere, feedback?.selection, feedback?.document.url]);
-  const feedbackDocument = feedback?.document.path ? documents.get(feedback.document.path) : undefined;
-  const feedbackStale = !!feedback?.document.path && (!feedbackDocument || feedback.document.revision !== feedbackDocument.revision || feedback.document.diskHash !== feedbackDocument.disk.hash);
-  const revealFeedback = () => {
-    if (!feedback) return;
-    if (feedback.document.url) setServerUrl(feedback.document.url);
-    else if (feedback.document.path && documents.get(feedback.document.path)) { setServerUrl(''); setActive(feedback.document.path); documents.setMode(feedback.document.path, 'rendered'); }
+  const attachedFeedback = reviewState.record.notes.find(note => note.id === reviewAttachmentId)
+    ?? (feedbackOpen || feedback?.id === reviewAttachmentId ? feedback : null);
+  const attachedHere = attachedFeedback && (serverUrl ? !!attachedFeedback.document.url && new URL(attachedFeedback.document.url).origin === new URL(serverUrl).origin : attachedFeedback.document.path === doc?.path);
+  const attachment = useMemo(() => attachedHere && attachedFeedback ? { ...attachedFeedback.selection, pageUrl: attachedFeedback.document.url } : undefined, [attachedHere, attachedFeedback?.selection, attachedFeedback?.document.url]);
+  const isFeedbackStale = (message: FeedbackMessage) => {
+    const current = message.document.path ? documents.get(message.document.path) : undefined;
+    return reviews.restored(message.id) || (!!message.document.path && (!current || message.document.revision !== current.revision || message.document.diskHash !== current.disk.hash));
+  };
+  const feedbackStale = !!feedback && isFeedbackStale(feedback);
+  const revealFeedback = (message: FeedbackMessage) => {
+    if (message.document.url) setServerUrl(message.document.url);
+    else if (message.document.path && documents.get(message.document.path)) { setServerUrl(''); setActive(message.document.path); documents.setMode(message.document.path, 'rendered'); }
     else { report('The document is closed. Reopen it to reveal the selection.'); return; }
-    setReveal(value => value + 1); setFeedbackOpen(false);
+    setCompare(null); setReviewAttachmentId(message.id);
+    setReveal(value => value + 1); setFeedbackOpen(false); setReviewOpen(false);
   };
   const ask = (title: string, detail: string, choices: string[]) =>
     new Promise<string>((resolve) =>
@@ -548,6 +577,18 @@ export default function App() {
     setSessionDialog(false);
     let exiting = false;
     try {
+      if (reviews.snapshot().busy) throw new Error('Wait for review notes to finish saving or sending before quitting.');
+      let requestApproval = await approveFeedbackClose(() => feedbackRef.current, reviews, (note, editing) => ask(
+        `${editing ? 'Save note changes' : 'Save this unsent request'} before ${updateVersion ? 'restarting' : 'quitting'}?`,
+        `${name(note.document.path ?? note.document.url ?? 'Document')}: ${editing ? 'your unsaved note changes' : 'this request'} will be lost if you discard. Save to Notes keeps it on this computer without sending to Pi.`,
+        ['Discard', 'Cancel', 'Save to Notes'],
+      ));
+      if (!requestApproval) return;
+      if (!feedbackApprovalCurrent(feedbackRef.current, requestApproval, reviews)) throw new Error('The request changed during Quit. Try again.');
+      if (requestApproval.savedNote) {
+        clearFeedback();
+        requestApproval = { ...requestApproval, state: feedbackRef.current };
+      }
       const approvals: CloseApproval[] = [];
       for (const path of documents.docs.map((d) => d.path)) {
         const approval = await approveClose(documents, path, chooseClose);
@@ -557,6 +598,8 @@ export default function App() {
       if (!approvalsCurrent(documents, approvals, true)) throw new Error("The session changed during Quit. Try again.");
       await journal.flush(sessionSnapshot(documents, workspaceRef.current, activeRef.current, approvals));
       if (!approvalsCurrent(documents, approvals, true)) throw new Error("The session changed during Quit. Try again.");
+      if (reviews.snapshot().busy) throw new Error('Review notes changed during Quit. Try again.');
+      if (!feedbackApprovalCurrent(feedbackRef.current, requestApproval, reviews)) throw new Error('The request changed during Quit. Try again.');
       if (updateVersion) {
         setInstallingUpdate(true);
         await api.installUpdate(updateVersion);
@@ -586,7 +629,7 @@ export default function App() {
         document.addEventListener("beforeinput", fieldOnly, true);
         try { document.execCommand(action); }
         finally { document.removeEventListener("beforeinput", fieldOnly, true); }
-      } else if (!prompt && !quick && !sessionDialog) history.current?.(action);
+      } else if (!prompt && !quick && !sessionDialog && !reviewOpen) history.current?.(action);
       return;
     }
     if (prompt || quick || sessionDialog || locked || !initialized) return;
@@ -672,8 +715,9 @@ export default function App() {
   };
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        if (feedbackOpen || inspect || selection) { e.preventDefault(); dismissFeedback(); return; }
+      if (e.key === "Escape" && !prompt && !quick && !sessionDialog && !serverDialog) {
+        if (reviewOpen) { e.preventDefault(); setReviewOpen(false); return; }
+        if (feedbackOpen || reviewAttachmentId || inspect || selection) { e.preventDefault(); dismissFeedback(); return; }
       }
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && ['i', 'f', 'r', 'e'].includes(e.key.toLowerCase()) && !prompt && !quick && !sessionDialog && !serverDialog && !locked && initialized) {
         e.preventDefault();
@@ -686,7 +730,7 @@ export default function App() {
         actionRef.current(e.shiftKey ? "redo" : "undo");
         return;
       }
-      if (!(e.metaKey || e.ctrlKey) || prompt || quick || sessionDialog || serverDialog || feedbackOpen || locked || !initialized) return;
+      if (!(e.metaKey || e.ctrlKey) || prompt || quick || sessionDialog || serverDialog || feedbackOpen || reviewOpen || locked || !initialized) return;
       const k = e.key.toLowerCase();
       if (!e.altKey && ["+", "=", "-", "0"].includes(k)) {
         e.preventDefault();
@@ -741,14 +785,17 @@ export default function App() {
         </button>
         {(doc || serverUrl || feedback) && (
           <>
-            <button className={'toolbar-action' + (inspect ? ' tool-active' : '')} aria-label={inspect ? 'Inspecting…' : 'Inspect'} aria-pressed={inspect} onClick={() => { setFeedbackOpen(false); setInspect((value) => !value); }} title="Inspect an element (⌘⇧I)">
+            <button className={'toolbar-action' + (inspect ? ' tool-active' : '')} aria-label={inspect ? 'Inspecting…' : 'Inspect'} aria-pressed={inspect} onClick={() => { setFeedbackOpen(false); setReviewOpen(false); setInspect((value) => !value); }} title="Inspect an element (⌘⇧I)">
               <Icon type="inspect" /><span>{inspect ? "Inspecting…" : "Inspect"}</span>
             </button>
-            <button className={'toolbar-action feedback-button' + (selection ? ' tool-active' : '')} aria-label="Feedback" onClick={() => openFeedback(selection ?? { type: "document", text: "" })} title={selection ? 'Feedback on selection (⌘⇧F)' : 'Document feedback (⌘⇧F)'}>
-              <Icon type="feedback" /><span>{feedback ? 'Request' : 'Feedback'}</span>
+            <button className={'toolbar-action feedback-button' + (feedback ? ' has-request' : '') + (selection || feedback ? ' tool-active' : '')} aria-label={unsentFeedback ? 'Resume unsent draft' : feedback ? 'View request' : 'Feedback'} aria-expanded={feedbackOpen} onClick={() => openFeedback(selection ?? { type: "document", text: "" })} title={unsentFeedback ? 'Resume unsent draft (⌘⇧F). Kept until app exit.' : feedback ? 'View request and delivery status (⌘⇧F)' : selection ? 'Feedback on selection (⌘⇧F)' : 'Document feedback (⌘⇧F)'}>
+              <Icon type="feedback" /><span>{unsentFeedback ? 'Unsent draft' : feedback ? 'View request' : 'Feedback'}</span>
             </button>
           </>
         )}
+        <button className="toolbar-action" aria-label={`Review notes (${reviewState.record.notes.length})`} aria-expanded={reviewOpen} title="Saved review notes" onClick={() => { dismissFeedback(); setReviewOpen(value => !value); }}>
+          <Icon type="notes" /><span>Notes{reviewState.record.notes.length ? ` (${reviewState.record.notes.length})` : ''}{reviewState.error ? ' · error' : ''}</span>
+        </button>
         <details
           className="app-menu"
           ref={actionsRef}
@@ -997,7 +1044,7 @@ export default function App() {
                 <button onClick={() => documents.update(doc.path, { review: undefined })}>Dismiss</button>
               </section>}
               {mode === "rendered" && /^(---|\+\+\+)[ \t]*\r?\n/.test(doc.text) && !comparison && !serverUrl && <div className="fidelity-note">Frontmatter is kept unchanged. Use Source to edit metadata.</div>}
-              {doc.previewOnly && mode === "rendered" && !comparison && !serverUrl && <div className="fidelity-note">Mermaid preview is read-only. Use Source to edit this document.</div>}
+              {doc.previewOnly && mode === "rendered" && !comparison && !serverUrl && <div className="fidelity-note">This preview is read-only to preserve Markdown syntax. Use Source to edit this document.</div>}
               {reason && !comparison && !serverUrl && (
                 <div className="fidelity-note">
                   {reason} No content has been removed.
@@ -1180,8 +1227,16 @@ export default function App() {
         candidate={candidate}
         onReplace={() => { if (candidate) { setFeedback({ ...candidate, intent: feedback.intent, instruction: feedback.instruction }); setCandidate(null); setFeedbackAnchor(undefined); } }}
         onChange={change => setFeedback(value => value ? { ...value, ...change } : value)}
-        onReveal={revealFeedback}
-        onDiscard={() => { setFeedback(null); setCandidate(null); dismissFeedback(); }}
+        onReveal={() => revealFeedback(feedback)}
+        savedNote={!!reviewEditingId}
+        collectionBusy={!reviewState.ready || reviewState.busy}
+        onCollect={async () => {
+          await reviews.save({ ...feedback, id: reviewEditingId ?? feedback.id });
+          const edited = !!reviewEditingId;
+          clearFeedback();
+          if (edited) setReviewOpen(true);
+        }}
+        onDiscard={() => { const edited = !!reviewEditingId; clearFeedback(); if (edited) setReviewOpen(true); }}
         targets={targets}
         targetId={targetId}
         loading={targetsLoading}
@@ -1191,7 +1246,15 @@ export default function App() {
         onSend={sendFeedback}
         onClose={dismissFeedback}
       />}
-      {selection && !feedbackOpen && !prompt && <SelectionActions selection={selection} onAction={intent => openFeedback(selection, intent)} />}
+      <ReviewPanel store={reviews} open={reviewOpen && !locked} onClose={() => setReviewOpen(false)} isStale={isFeedbackStale}
+        confirm={async (title, detail) => (await ask(title, detail, ['Cancel', 'Remove'])) === 'Remove'}
+        onReveal={revealFeedback} onEdit={note => {
+          if (feedback && reviewEditingId === note.id) { setReviewOpen(false); setFeedbackOpen(true); return; }
+          if (feedback) { report('Finish or discard the current request before editing a saved note.'); return; }
+          setFeedback(structuredClone(note)); setReviewEditingId(note.id); setCandidate(null); setReviewAttachmentId(undefined);
+          setFeedbackAnchor(undefined); setReviewOpen(false); setFeedbackOpen(true);
+        }} />
+      {selection && !feedbackOpen && !reviewOpen && !prompt && <SelectionActions selection={selection} onAction={intent => openFeedback(selection, intent)} />}
       {quick && <QuickOpen workspace={workspace} open={open} close={() => setQuick(false)} />}
       {sessionDialog && <SessionDialog status={recovery} startup={!initialized} restore={restore}
         change={changeRecovery} close={() => setSessionDialog(false)} quit={api.quit} />}

@@ -88,10 +88,13 @@ For packaged WKWebView automation, use an isolated test bundle. The test deliber
 pnpm tauri build --features desktop-test --config '{"identifier":"app.sidelit.feature-check","productName":"Sidelit Feature Check"}'
 SIDELIT_TEST_BINARY="$PWD/src-tauri/target/release/bundle/macos/Sidelit Feature Check.app/Contents/MacOS/sidelit" python3 scripts/desktop-smoke.py
 SIDELIT_TEST_BINARY="$PWD/src-tauri/target/release/bundle/macos/Sidelit Feature Check.app/Contents/MacOS/sidelit" python3 scripts/feedback-smoke.py
+SIDELIT_TEST_BINARY="$PWD/src-tauri/target/release/bundle/macos/Sidelit Feature Check.app/Contents/MacOS/sidelit" python3 scripts/review-smoke.py
 SIDELIT_TEST_BINARY="$PWD/src-tauri/target/release/bundle/macos/Sidelit Feature Check.app/Contents/MacOS/sidelit" python3 scripts/companion-smoke.py
 ```
 
 The optional `tauri-plugin-wdio-webdriver` is current Tauri-supported desktop tooling. The Python script uses its W3C endpoints directly; it needs no browser or Node runtime. It creates temporary files and writes captures/results to ignored `test-results/`. New/Save As selection and restore approval use simulated replies in this script; Rust creation and recovery primitives have separate tests. Full native OS dialog interaction remains a manual check.
+
+The review smoke test uses a private test-only Unix-socket receiver, not a real agent. It checks multi-file notes, private storage, a dropped receipt, restart without automatic sending, identical retry, removal, minimum-window controls, and unchanged documents. It deletes only its isolated app's saved review notes.
 
 The companion smoke test additionally requires an installed Pi. It starts an isolated Pi runtime with a deterministic offline model extension, invokes Pi's real edit tool against temporary files, and checks native delivery, acceptance, refresh, MDX, assets, and sandbox boundaries. It does not use your model accounts or change your Pi configuration. Run it from a separate Rex test pane to verify inherited Rex identifiers. Unit tests cover disconnected/busy sockets, duplicate delivery, malformed messages, project matching, and compilation errors.
 

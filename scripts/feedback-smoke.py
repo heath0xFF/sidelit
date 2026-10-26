@@ -50,8 +50,8 @@ try:
         def input_text(value):
             js('const el=document.querySelector(".feedback-panel textarea");Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value").set.call(el,arguments[0]);el.dispatchEvent(new Event("input",{bubbles:true}));el.dispatchEvent(new Event("change",{bubbles:true}))', value)
         def feedback():
-            js('document.querySelector("button[aria-label=Feedback]").click()')
-            wait(lambda: js('return !!document.querySelector(".feedback-panel textarea")'))
+            js('document.querySelector(".feedback-button").click()')
+            wait(lambda: js('return document.querySelector(".feedback-panel")?.hidden === false'))
         wait(lambda: js('return !!document.querySelector(".ProseMirror p")'))
         req(f'/session/{session}/window/rect', {'width': 1180, 'height': 820})
         report['markdownEditable'] = js('return document.querySelector(".ProseMirror").isContentEditable')
@@ -71,6 +71,25 @@ try:
         feedback()
         assert js('return document.querySelector(".feedback-panel textarea").value') == 'Explain how this works without changing the document.'
         js('document.querySelector(".feedback-panel textarea").dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}))')
+        wait(lambda: js('return document.querySelector(".feedback-panel").hidden && !document.querySelector(".selection-highlight")'))
+        assert js('return document.querySelector(".feedback-button").textContent') == 'Unsent draft'
+        assert js('return document.querySelector(".feedback-button").getAttribute("aria-label")') == 'Resume unsent draft'
+        req(f'/session/{session}/window/rect', {'width': 720, 'height': 480})
+        wait(lambda: js('const b=document.querySelector(".feedback-button"),r=b.getBoundingClientRect();return getComputedStyle(b.querySelector("span")).display!=="none" && r.right<=innerWidth && document.documentElement.scrollWidth<=innerWidth'))
+        (OUT / 'hidden-draft-narrow.png').write_bytes(base64.b64decode(req(f'/session/{session}/screenshot')))
+        req(f'/session/{session}/window/rect', {'width': 1180, 'height': 820})
+        feedback()
+        assert js('return document.querySelector(".feedback-panel textarea").value') == 'Explain how this works without changing the document.'
+        wait(lambda: js('return !!document.querySelector(".selection-highlight i")'))
+        js('document.querySelector(".reveal-selection").click()')
+        wait(lambda: js('return document.querySelector(".feedback-panel").hidden && !!document.querySelector(".selection-highlight i")'))
+        js('document.body.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}))')
+        wait(lambda: js('return !document.querySelector(".selection-highlight")'))
+        feedback()
+        js('document.querySelector("button[aria-label=\\"Dismiss feedback, keep draft\\"]").click()')
+        wait(lambda: js('return document.querySelector(".feedback-panel").hidden && !document.querySelector(".selection-highlight")'))
+        report['dismissClearsHighlightAndKeepsDraft'] = True
+        report['unsentDraftVisibleAtMinimumSize'] = True
         js('const p=document.querySelector(".ProseMirror h2");const r=document.createRange();r.selectNodeContents(p);getSelection().removeAllRanges();getSelection().addRange(r);p.dispatchEvent(new MouseEvent("mouseup",{bubbles:true}))')
         js('[...document.querySelectorAll(".selection-actions button")].find(b=>b.textContent==="Edit").click()')
         wait(lambda: js('return document.body.innerText.includes("Use new selection")'))
@@ -79,11 +98,12 @@ try:
         report['replacementPreservesIntent'] = True
         js('[...document.querySelectorAll(".feedback-panel button")].find(b=>b.textContent==="Discard request").click()')
         wait(lambda: js('return !document.querySelector(".feedback-panel")'))
+        assert js('return document.querySelector(".feedback-button").textContent') == 'Feedback'
         js('const p=document.querySelector(".ProseMirror p");const r=document.createRange();r.selectNodeContents(p);getSelection().removeAllRanges();getSelection().addRange(r);p.dispatchEvent(new MouseEvent("mouseup",{bubbles:true}))')
         document.write_text(original + '\nChanged before opening the request.\n')
         wait(lambda: js('return document.querySelector(".ProseMirror").innerText.includes("Changed before opening")'))
         js('document.querySelector(".selection-actions button").click()')
-        wait(lambda: js('return document.body.innerText.includes("The document changed after capture")'))
+        wait(lambda: js('return document.body.innerText.includes("This capture may no longer match")'))
         report['capturePredatesComposer'] = True
         js('[...document.querySelectorAll(".feedback-panel button")].find(b=>b.textContent==="Discard request").click()')
         document.write_text(original)
@@ -112,7 +132,7 @@ try:
         launch(document)
         wait(lambda: js('return document.querySelector(".ProseMirror h1")?.textContent') == 'Reading and asking')
         document.write_text(original + '\nAn external update.\n')
-        wait(lambda: js('return document.body.innerText.includes("The document changed after capture")'))
+        wait(lambda: js('return document.body.innerText.includes("This capture may no longer match")'))
         report['staleContextDisclosed'] = True
         input_text('Explain how this works without changing the document.')
         (OUT / 'reading-feedback.png').write_bytes(base64.b64decode(req(f'/session/{session}/screenshot')))

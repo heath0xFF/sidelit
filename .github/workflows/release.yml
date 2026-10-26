@@ -142,17 +142,19 @@ jobs:
 
           **This release is ad-hoc signed, not Apple-notarized.** If macOS blocks the first launch, use **System Settings → Privacy & Security → Open Anyway** for Sidelit, only if you trust this download. Do not disable Gatekeeper.
 
-          **New in 0.3.0: offline Mermaid diagram previews with Pele.**
+          **New in 0.4.0: saved review notes and safer request handling.**
 
-          - Read Mermaid diagrams beside the prose in Markdown and MDX previews, with dark/light themes, live text sizing, and zoom controls for diagrams that shrink to fit.
-          - Markdown files with diagrams open in a read-only Rendered preview. Use **Source** to edit the document; mode switches and no-op Save preserve the original bytes.
-          - Expand **Diagram source** to read the code. Invalid or over-limit diagrams show their source and an error without hiding the rest of the document.
-          - Diagram SVG stays in the isolated preview frame. Diagram links and images are disabled; source, edge, output, and per-page limits bound rendering work. Other unsupported Markdown syntax still uses Source.
-          - Try `samples/Diagrams.md` from the repository. Existing Markdown editing, HTML/MDX previews, and contextual Pi feedback remain available.
+          - **Collect while reading.** Choose **Add to review** to keep up to 20 notes locally. Open **Notes** to edit, remove, or reveal a capture, then select notes from one project and send them as one Pi message. Each note keeps its own Explain, Review, or Edit intent.
+          - **Review before sending.** Choose the Pi session explicitly and inspect the exact batch payload. Changed or restored captures need acknowledgment. Retries keep the same ID, destination, and payload, including after restart. Nothing sends automatically.
+          - **Find your draft.** **Unsent draft** stays visible in the toolbar, including in narrow windows. Escape and Hide clear the selection highlight without deleting the request. **View request** replaces the label once delivery starts.
+          - **Quit safely.** Unsent requests and unsaved note edits offer **Save to Notes**, **Discard**, or **Cancel** on Quit, window close, and update/restart. Failed saves keep the app open and retain the draft. Unchanged saved notes need no extra prompt.
+          - **Read Markdown with HTML comments.** Complete comments remain hidden and unchanged in a read-only Rendered preview. Use Source to edit. Raw HTML and unsupported syntax still keep their fidelity safeguards.
 
-          Verified with 101 frontend/bridge tests, 23 Rust tests, and the full packaged macOS editor suite, including diagram isolation, error fallback, theme/text-size changes, narrow layout, and CRLF no-op saves. Full Mermaid syntax compatibility, VoiceOver, native dialogs, Intel runtime, and older macOS versions still need manual checks. Pele uses its own layout; size limits are not a CPU time limit.
+          **Pi users:** after updating, run `sidelit setup --pi --skill`, then `/reload` in each intended Pi session. Batch delivery needs the updated extension; older extensions still support quick requests. Setup preserves custom installations.
 
-          Requests are currently one at a time and remain in memory only until app exit. Batch review notes are tracked in `ROADMAP.md`. Standalone MDX imports require your development server; server inspection requires the opt-in preview bridge. Explain/Review express intent to Pi, not an edit-permission boundary. See the README for setup and security details.
+          Verified with 140 frontend/bridge tests, 27 Rust tests, packaged macOS editor and review tests, the real Pi runtime with an offline fixture model, and an isolated signed install/restart test. Tests cover dropped receipts, identical retries after restart, local storage failures, quit cancellation, unchanged document bytes, and narrow/light and wide/dark layouts. VoiceOver, Intel runtime, and older macOS versions still need manual checks.
+
+          Saved notes use private OS permissions, not encryption. Force-quit or a crash can still lose an unsaved quick draft. Receipt and acceptance do not mean the work is complete; answers stay in Pi. Standalone MDX imports require your development server; server inspection requires the opt-in preview bridge. Explain/Review express intent to Pi, not an edit-permission boundary. See the README for setup and security details.
 
           **From 0.1.1 or later:** use **Actions → Check for Updates**, then **Install & Restart**.
 

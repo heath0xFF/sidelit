@@ -11,8 +11,8 @@ Tauri 2 / Rust desktop app. React + TypeScript + Vite frontend. pnpm only. No El
 - `src-tauri/src/integrations.rs`: embedded Pi/skill setup, read-only diagnostics, build identity. Preserve custom installations; never type into a terminal during setup.
 - `src/documents.ts`: canonical buffers, baseline snapshots, revisions, pending external versions.
 - `src/Rich.tsx`: Crepe transactions; `Source.tsx`: lazy Monaco, local worker, model lifecycle.
-- `src/inspection.ts`, `selection-dom.ts`, `SelectionActions.tsx`, `FeedbackComposer.tsx`: bounded selection snapshots, verified highlights, Explain/Review/Edit and in-memory request drafts. `Preview.tsx` hosts isolated HTML/MDX and opt-in dev-server inspection; `agents.rs` and `extensions/pi-sidelit/` own local delivery.
-- `src/fidelity.ts`: frontmatter preservation and a conservative gate at Rendered entry. Mermaid-only exceptions use a read-only sandbox, never Crepe; `preview-mermaid.tsx` renders bounded Pele diagrams without links or images.
+- `src/inspection.ts`, `selection-dom.ts`, `SelectionActions.tsx`, `FeedbackComposer.tsx`: bounded selection snapshots, verified highlights, Explain/Review/Edit and in-memory request drafts. `review.ts` / `ReviewPanel.tsx` collect saved review notes; `src-tauri/src/review.rs` owns bounded private storage. Batch IDs, targets, and payloads are saved before delivery; restored captures require acknowledgment. `Preview.tsx` hosts isolated HTML/MDX and opt-in dev-server inspection; `agents.rs` and `extensions/pi-sidelit/` own local delivery.
+- `src/fidelity.ts`: frontmatter preservation and a conservative gate at Rendered entry. Mermaid and complete HTML comment exceptions use a read-only sandbox, never Crepe; `preview-mermaid.tsx` renders bounded Pele diagrams without links or images.
 - `src/closing.ts`, `recovery.ts`: live close approvals and serialized, coalesced checkpoints.
 - `src/appearance.ts`: bounded font-size settings and System/One Light/One Dark preference resolution. `style.css` owns shared palette tokens; fonts and OFL notices are bundled offline.
 - `src/App.tsx`: tabs, workspace, tree, dialogs, keyboard actions. Route native Undo/Redo to the active editor, not WebKit's undo manager; disk reloads clear editor history.
@@ -45,7 +45,7 @@ Desktop checks: use the isolated `desktop-test` bundle command in `docs/developm
 8. Watch directories, not file inodes. Keep watcher guards in application state. Do not use ignore timers for own saves.
 9. Register single-instance first. Queue requests until the frontend drains them. Keep test instrumentation out of ordinary release builds.
 10. Appearance updates must not remount editors, replace models, or write Markdown. Keep list markers aligned at every supported font size.
-11. Close and Quit must revalidate live document revisions after awaits. Save Merged must use the explicitly reviewed disk hash, not the latest unseen version.
+11. Close and Quit must revalidate live document revisions after awaits. App exit and update/restart also require live approvals for unsent requests and unsaved note edits; failed local note saves must stop exit. Never turn an attempted delivery into a new unsent note. Save Merged must use the explicitly reviewed disk hash, not the latest unseen version.
 12. Recovery is opt-in, bounded, private, and separate from originals. Restore requires native path approval. Discarded drafts must not re-enter the final checkpoint; disabling recovery waits for writes before deleting it.
 13. Updates use the same live draft approvals as Quit. They replace only the running app bundle and accept no frontend target path or URL. Never install or restart silently, accept unsigned/version-mismatched updates, expose the private signing key, or sign a test build with it.
 14. Keep both lockfiles. Use brief comments only where the reason is not clear from the code.

@@ -1,4 +1,119 @@
-# Verification — v0.1
+# Verification
+
+## v0.4.0 release checks
+
+Saved review notes, batch delivery, request visibility, quit protection, and
+HTML-comment previews are included in v0.4.0. The feature checks below record
+the implementation passes before the release version was set.
+
+Release checks passed: frozen pnpm install, TypeScript, 140 frontend/bridge
+tests, 27 Rust tests, Cargo check/format, and the isolated signed updater test
+at v0.4.0. The updater test used a disposable key and its own bundle; it checked
+version/signature rejection, failed-install draft retention, real replacement,
+and restart without stale CLI paths. It did not touch the installed Sidelit.
+Packaged review, feedback, editor, and real-Pi fixture checks passed in the final
+feature pass. The macOS release workflow checks universal architectures,
+installer signatures, and the signed update feed before publication.
+
+VoiceOver, Intel runtime, and older macOS versions still need manual checks.
+Current releases remain ad-hoc Apple-signed, not notarized.
+
+## Quit protection for unsent requests — unreleased
+
+Quit, window close, and update/restart now share live request approvals with
+Save to Notes / Discard / Cancel. Save waits for local storage and never sends.
+Failed saves leave the app open. Edited saved notes keep their original ID;
+unchanged saved notes need no prompt. Discard consent does not erase a request
+if another prompt is canceled or exit fails. Attempted deliveries are not saved
+as new unsent notes. Cancel receives focus after the modal opens.
+
+- TypeScript, **140 frontend tests**, **27 Rust tests**, Cargo check/format,
+  and whitespace checks passed. Unit tests cover storage failures, a full list,
+  unavailable storage, changed requests across awaits, and stale approvals.
+- Packaged `review-smoke.py` covers hidden drafts, Cancel/Escape, failed save,
+  real save/quit/restart, explicit discard, unchanged and edited saved notes,
+  unchanged document bytes/mtimes, and no extra delivery. It emits the native
+  close event's `request-quit` message; Rust's window-close/exit routing was
+  checked in `main.rs`. Update cancellation and failure use a test API, not an
+  actual installer. No new native permissions or shipping test hooks were added.
+- Packaged feedback and full desktop checks passed. The real-Pi companion test
+  passed with its offline fixture model. The ordinary app was rebuilt without
+  `desktop-test`; no installed app was replaced and no release was tagged.
+- Light 720×480 and dark 1180×820 captures reviewed:
+  `test-results/review/quit-unsent-light.png` and `quit-unsent-dark.png`.
+
+Limits: force-quit and crashes can still lose a quick draft. The signed updater
+installation test and VoiceOver were not rerun in this pass.
+
+## Request dismissal and draft visibility — unreleased
+
+Escape and Hide now clear the attachment highlight without discarding the
+request. The preview also clears its native text selection. An explicit Reveal
+selection can show the highlight with the composer closed; Escape clears it.
+The toolbar keeps an Unsent draft label visible at narrow widths. It changes to
+View request when delivery starts, not when a receipt arrives.
+
+The packaged feedback regression failed on the old build and passed with the
+fix. Packaged checks cover rich text, Mermaid previews, saved-note reveal,
+reopening the same draft, and the visible label at 720×480. The real-Pi fixture
+checks that delivery no longer leaves an Unsent draft label. TypeScript and all
+134 frontend tests passed. Screenshots:
+`test-results/ux-review/hidden-draft-narrow.png` and
+`test-results/mermaid-hidden-draft.png`.
+
+No installed app was replaced. Rust code was unchanged; Rust tests and VoiceOver
+were not rerun for this fix. Quick requests still last only until app exit.
+
+## Saved review notes — unreleased
+
+One local list holds up to 20 notes. Add to review and Save note are explicit
+local-save actions. Selected notes from one project or live-page origin are sent
+as one bounded message. Its ID, target and payload are saved before sending and
+kept unchanged for retry. Restarts do not send; acceptance is not completion.
+
+Verified in this pass:
+
+- TypeScript, **134 frontend/bridge tests**, **27 Rust tests** (including updater
+  manifest tests), Rust formatting/check, and packaged builds.
+- `scripts/review-smoke.py`: actual packaged WKWebView, multi-file capture,
+  edit/hide/resume, reveal, explicit target, payload preview, private atomic
+  storage, a dropped receipt, restart, identical retry, removal, unchanged file
+  bytes and modification times, and controls at 720×480. The receiver is a
+  private test socket; no real agent receives these batch requests.
+- `scripts/feedback-smoke.py` and the full `scripts/desktop-smoke.py` passed.
+  Desktop tests now float their own window under AeroSpace and scroll the lazy
+  code editor into view instead of depending on the desktop's layout.
+- `scripts/companion-smoke.py` passed with real Pi, its real edit tool, and an
+  offline fixture model. It verifies the existing single-request flow. Socket
+  unit tests cover one-message batch delivery and deduplication through Pi hooks.
+- Wide dark and minimum-size light captures reviewed in-thread:
+  `test-results/review/notes-dark.png` and `notes-light-minimum.png`. No new
+  dependencies, chat history, automatic resolution, or browser engine was added.
+  The new panel title uses the documented type scale; remaining detector
+  advisories are in existing CSS outside this change.
+
+Limits: no live-model batch run, Linux, or VoiceOver check. Saved notes are not
+encrypted. Batch delivery needs the updated Pi extension and `/reload`.
+No installed app or integration was replaced, and no release was published.
+
+## HTML comment previews
+
+Markdown with complete HTML comments now uses the read-only sandbox preview,
+not Crepe. Comments stay hidden and unchanged; editing requires Source. Other
+raw HTML and unsupported syntax still use Source.
+
+- `pnpm check` and all **119 frontend/bridge tests** passed.
+- The isolated packaged `desktop-smoke.py` passed, including comment visibility,
+  blocked rich editing, sandbox isolation, Source/Rendered switching, and CRLF
+  bytes and modification time unchanged after Save.
+- Tests cover inline, multiline, adjacent, and literal code comments; mixed raw
+  HTML; unclosed comments; disk refresh; recovery; and dirty-draft conflicts.
+- Light and dark captures reviewed in-thread: `test-results/comments-light.png`
+  and `comments-dark.png`. No layout or styling changes were needed.
+- The actual `../mrmr/PRODUCT.md` passes the read-only preview check unchanged.
+
+No installed app was replaced. Rust unit tests and VoiceOver were not rerun.
+The isolated bundle uses `desktop-test` and must not be distributed.
 
 ## v0.3.0 — Mermaid previews — 2026-10-24
 

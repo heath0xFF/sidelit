@@ -39,25 +39,36 @@ struct Registration {
     pid: u32,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct FeedbackMessage {
-    id: String,
-    source: String,
-    project_root: Option<String>,
-    document: Value,
-    selection: Value,
-    instruction: String,
+    pub id: String,
+    pub source: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    intent: Option<String>,
+    pub project_root: Option<String>,
+    pub document: Value,
+    pub selection: Value,
+    pub instruction: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intent: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FeedbackBatch {
+    pub id: String,
+    pub source: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_root: Option<String>,
+    pub notes: Vec<FeedbackMessage>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DeliveryAck {
-    id: String,
-    status: String,
-    delivery: String,
+    pub id: String,
+    pub status: String,
+    pub delivery: String,
 }
 
 fn registry_dir() -> PathBuf {
@@ -85,7 +96,7 @@ fn private_owned(path: &Path, directory: bool) -> bool {
     }
 }
 
-fn safe_id(id: &str) -> bool {
+pub(crate) fn safe_id(id: &str) -> bool {
     !id.is_empty()
         && id.len() <= 128
         && id
@@ -326,7 +337,7 @@ pub async fn agent_targets(project_root: Option<String>) -> Result<Vec<AgentTarg
         .map_err(|e| e.to_string())
 }
 
-fn validate_message(message: &FeedbackMessage, registration: &Registration) -> Result<(), String> {
+pub(crate) fn validate_note(message: &FeedbackMessage, draft: bool) -> Result<(), String> {
     if message
         .intent
         .as_deref()
@@ -337,11 +348,12 @@ fn validate_message(message: &FeedbackMessage, registration: &Registration) -> R
     if message.source != "sidelit" || !safe_id(&message.id) {
         return Err("Invalid Sidelit feedback message".into());
     }
-    if message.instruction.trim().is_empty() || message.instruction.len() > 8000 {
-        return Err("Feedback instruction must be between 1 and 8000 characters".into());
+    if (!draft && message.instruction.trim().is_empty()) || message.instruction.len() > 8000 {
+        return Err("Feedback instruction must be between 1 and 8000 bytes".into());
     }
     if serde_json::to_vec(&message.document).map_or(true, |bytes| bytes.len() > 6000)
-        || serde_json::to_vec(&message.selection).map_or(true, |bytes| bytes.len() > 8000)
+        || serde_json::to_vec(&message.selection)
+            .map_or(true, |bytes| bytes.len() > if draft { 16000 } else { 8000 })
     {
         return Err("Feedback context is too large".into());
     }
@@ -355,8 +367,104 @@ fn validate_message(message: &FeedbackMessage, registration: &Registration) -> R
     {
         return Err("Invalid feedback context".into());
     }
-    if !compatible(message.project_root.as_deref(), &registration.project_root) {
-        return Err("The selected Pi session belongs to a different project".into());
+    if !message.document.get("path").is_some_and(Value::is_string)
+        && !message.document.get("url").is_some_and(Value::is_string)
+    {
+        return Err("Feedback needs a document path or URL".into());
+    }
+    if let Some(url) = message.document.get("url") {
+        let valid = url
+            .as_str()
+            .and_then(|value| url::Url::parse(value).ok())
+            .is_some_and(|url| matches!(url.scheme(), "http" | "https"));
+        if !valid {
+            return Err("Invalid feedback page URL".into());
+        }
+    }
+    let strings = |value: &Value, keys: &[&str]| {
+        keys.iter()
+            .all(|key| value.get(key).is_none_or(Value::is_string))
+    };
+    if !strings(&message.document, &["path", "diskHash", "capturedAt"])
+        || !strings(
+            &message.selection,
+            &[
+                "selector",
+                "tag",
+                "id",
+                "surrounding",
+                "prefix",
+                "suffix",
+                "anchorText",
+                "locatorConfidence",
+            ],
+        )
+        || message
+            .document
+            .get("revision")
+            .is_some_and(|v| v.as_u64().is_none_or(|n| n > 9_007_199_254_740_991))
+        || message
+            .document
+            .get("unsaved")
+            .is_some_and(|v| !v.is_boolean())
+        || message
+            .selection
+            .get("truncated")
+            .is_some_and(|v| !v.is_boolean())
+        || message.selection.get("sourceLine").is_some_and(|v| {
+            !v.is_null()
+                && v.as_u64()
+                    .is_none_or(|n| n == 0 || n > 9_007_199_254_740_991)
+        })
+        || message.selection.get("classes").is_some_and(|v| {
+            v.as_array()
+                .is_none_or(|items| items.len() > 8 || items.iter().any(|v| !v.is_string()))
+        })
+        || message.selection.get("styles").is_some_and(|v| {
+            v.as_object()
+                .is_none_or(|styles| styles.values().any(|v| !v.is_string()))
+        })
+    {
+        return Err("Invalid feedback capture metadata".into());
+    }
+    Ok(())
+}
+
+fn note_scope(note: &FeedbackMessage) -> Option<String> {
+    if let Some(root) = note.project_root.as_deref().filter(|root| !root.is_empty()) {
+        return Path::new(root)
+            .is_absolute()
+            .then(|| format!("project:{root}"));
+    }
+    let url = url::Url::parse(note.document.get("url")?.as_str()?).ok()?;
+    matches!(url.scheme(), "http" | "https")
+        .then(|| format!("page:{}", url.origin().ascii_serialization()))
+}
+
+pub(crate) fn validate_batch(batch: &FeedbackBatch) -> Result<(), String> {
+    if batch.source != "sidelit"
+        || !safe_id(&batch.id)
+        || batch.notes.is_empty()
+        || batch.notes.len() > 20
+        || serde_json::to_vec(batch).map_or(true, |bytes| bytes.len() > 30 * 1024)
+    {
+        return Err("Review batch must contain 1–20 notes and fit within 30 KiB".into());
+    }
+    let scope =
+        note_scope(&batch.notes[0]).ok_or("Review notes need a project or live-page origin")?;
+    let mut ids = std::collections::HashSet::new();
+    for note in &batch.notes {
+        validate_note(note, false)?;
+        if !ids.insert(&note.id)
+            || note.id == batch.id
+            || note_scope(note).as_ref() != Some(&scope)
+            || note.project_root != batch.project_root
+        {
+            return Err(
+                "Review notes must have unique IDs and belong to one project or live-page origin"
+                    .into(),
+            );
+        }
     }
     Ok(())
 }
@@ -440,9 +548,20 @@ fn delivery(target_id: String, message: Value, id: &str) -> Result<DeliveryAck, 
         .find(|registration| registration.id == target_id)
         .ok_or_else(|| "That Pi session is no longer connected".to_string())?;
     if message.get("op").and_then(Value::as_str) != Some("status") {
-        let feedback = serde_json::from_value(message.clone())
-            .map_err(|e| format!("Invalid feedback: {e}"))?;
-        validate_message(&feedback, &registration)?;
+        let project = if message.get("notes").is_some() {
+            let batch: FeedbackBatch = serde_json::from_value(message.clone())
+                .map_err(|e| format!("Invalid review batch: {e}"))?;
+            validate_batch(&batch)?;
+            batch.project_root
+        } else {
+            let feedback: FeedbackMessage = serde_json::from_value(message.clone())
+                .map_err(|e| format!("Invalid feedback: {e}"))?;
+            validate_note(&feedback, false)?;
+            feedback.project_root
+        };
+        if !compatible(project.as_deref(), &registration.project_root) {
+            return Err("The selected Pi session belongs to a different project".into());
+        }
     }
     #[cfg(not(unix))]
     return Err("Pi delivery currently requires a Unix-like desktop".into());
@@ -515,6 +634,19 @@ pub async fn send_feedback(
 }
 
 #[command]
+pub async fn send_review(target_id: String, message: FeedbackBatch) -> Result<DeliveryAck, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        delivery(
+            target_id,
+            serde_json::to_value(&message).map_err(|e| e.to_string())?,
+            &message.id,
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[command]
 pub async fn feedback_status(target_id: String, id: String) -> Result<DeliveryAck, String> {
     if !safe_id(&id) {
         return Err("Invalid message ID".into());
@@ -533,6 +665,38 @@ pub async fn feedback_status(target_id: String, id: String) -> Result<DeliveryAc
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn batches_are_bounded_and_keep_project_and_note_identities() {
+        let note = serde_json::json!({"id":"one","source":"sidelit","projectRoot":"/repo",
+            "document":{"path":"/repo/doc.md","format":"markdown"},
+            "selection":{"type":"text","text":"Quote"},"instruction":"Explain this","intent":"explain"});
+        let mut batch: FeedbackBatch = serde_json::from_value(serde_json::json!({"id":"batch","source":"sidelit","projectRoot":"/repo","notes":[note]})).unwrap();
+        assert!(validate_batch(&batch).is_ok());
+        batch.notes.push(batch.notes[0].clone());
+        assert!(validate_batch(&batch).is_err());
+        batch.notes[1].id = "two".into();
+        assert!(validate_batch(&batch).is_ok());
+        batch.notes[1].project_root = Some("/repo/other".into());
+        assert!(validate_batch(&batch).is_err());
+        batch.notes.pop();
+        batch.notes[0].id = "batch".into();
+        assert!(validate_batch(&batch).is_err());
+        batch.notes[0].id = "one".into();
+        batch.notes[0].instruction = "語".repeat(2700);
+        assert!(validate_batch(&batch).is_err());
+        batch.notes[0].instruction = "語".repeat(2000);
+        batch.notes = (0..6)
+            .map(|i| {
+                let mut note = batch.notes[0].clone();
+                note.id = format!("note-{i}");
+                note
+            })
+            .collect();
+        assert!(validate_batch(&batch).is_err());
+        batch.notes.clear();
+        assert!(validate_batch(&batch).is_err());
+    }
 
     #[test]
     fn ids_are_bounded_and_path_safe() {

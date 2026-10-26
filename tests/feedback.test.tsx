@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, useState } from 'react';
+import { act, useState, type ComponentProps } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import FeedbackComposer from '../src/FeedbackComposer';
@@ -10,16 +10,39 @@ vi.mock('../src/api', () => ({ api: { feedbackStatus: vi.fn(), focusAgent: vi.fn
 let root: Root | undefined;
 afterEach(async () => { await act(async () => root?.unmount()); document.body.replaceChildren(); root = undefined; });
 const context = (): FeedbackMessage => ({ id: 'request-1', source: 'sidelit', intent: 'explain', document: { path: '/repo/doc.md', format: 'markdown', revision: 0 }, selection: { type: 'text', text: 'Selected words' }, instruction: 'Explain this carefully.' });
-async function mount(send = vi.fn().mockResolvedValue({ id: 'request-1', status: 'accepted', delivery: 'consumed' })) {
+async function mount(send = vi.fn().mockResolvedValue({ id: 'request-1', status: 'accepted', delivery: 'consumed' }), extra: Partial<ComponentProps<typeof FeedbackComposer>> = {}) {
   (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   function Fixture() {
     const [draft, setDraft] = useState(context), [open, setOpen] = useState(true);
-    return <><button id="reopen" onClick={() => setOpen(true)}>Reopen</button><FeedbackComposer context={draft} open={open} targets={[{ id: 'pi', label: 'Pi', projectRoot: '/repo', connected: true, busy: false }]} targetId="pi" onTarget={() => {}} onChange={change => setDraft(value => ({ ...value, ...change }))} onSend={send} onClose={() => setOpen(false)} onDiscard={() => {}} loading={false} targetError="" onRefreshTargets={() => {}} stale={false} candidate={null} onReplace={() => {}} onReveal={() => {}} /></>;
+    return <><button id="reopen" onClick={() => setOpen(true)}>Reopen</button><FeedbackComposer context={draft} open={open} targets={[{ id: 'pi', label: 'Pi', projectRoot: '/repo', connected: true, busy: false }]} targetId="pi" onTarget={() => {}} onChange={change => setDraft(value => ({ ...value, ...change }))} onSend={send} onClose={() => setOpen(false)} onDiscard={() => {}} loading={false} targetError="" onRefreshTargets={() => {}} stale={false} candidate={null} onReplace={() => {}} onReveal={() => {}} {...extra} /></>;
   }
   await act(async () => root!.render(<Fixture />)); return send;
 }
 describe('request continuity', () => {
+  it('keeps quick delivery independent of review storage and saves notes without sending', async () => {
+    const collect = vi.fn().mockRejectedValue(Error('disk full'));
+    const send = await mount(undefined, { onCollect: collect, collectionBusy: false });
+    await act(async () => [...document.querySelectorAll('button')].find(b => b.textContent === 'Add to review')!.click());
+    expect(collect).toHaveBeenCalledOnce(); expect(send).not.toHaveBeenCalled();
+    expect(document.querySelector('textarea')!.value).toBe('Explain this carefully.');
+    expect(document.body.textContent).toContain('disk full');
+  });
+  it('allows quick sending when review storage is unavailable', async () => {
+    const send = await mount(undefined, { collectionBusy: true, onCollect: async () => {} });
+    expect([...document.querySelectorAll('button')].find(b => b.textContent === 'Add to review')!.disabled).toBe(true);
+    await act(async () => [...document.querySelectorAll('button')].find(b => b.textContent === 'Send to Pi')!.click());
+    expect(send).toHaveBeenCalledOnce();
+  });
+  it('edits a saved note without exposing a second delivery path', async () => {
+    const collect = vi.fn();
+    const send = await mount(undefined, { savedNote: true, onCollect: collect });
+    expect([...document.querySelectorAll('button')].some(b => b.textContent === 'Send to Pi')).toBe(false);
+    await act(async () => document.querySelector('textarea')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true })));
+    expect(send).not.toHaveBeenCalled();
+    await act(async () => [...document.querySelectorAll('button')].find(b => b.textContent === 'Save note')!.click());
+    expect(collect).toHaveBeenCalledOnce();
+  });
   it('preserves a request while hidden, on repeated opening, and after Escape', async () => {
     await mount();
     const input = document.querySelector('textarea')!;

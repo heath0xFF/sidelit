@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { feedbackSelection, type FeedbackMessage } from "./inspection";
+import type { FeedbackBatch, ReviewRecord } from "./review";
 export interface Snapshot {
   text: string;
   hash: string;
@@ -96,6 +97,9 @@ export const api = {
     invoke<AgentTarget[]>("agent_targets", { projectRoot: projectRoot ?? null }),
   sendFeedback: (targetId: string, message: FeedbackMessage) =>
     invoke<DeliveryAck>("send_feedback", { targetId, message: { ...message, selection: feedbackSelection(message.selection) } }),
+  loadReview: () => invoke<ReviewRecord>('load_review'),
+  storeReview: (record: ReviewRecord) => invoke<void>('store_review', { record }),
+  sendReview: (targetId: string, message: FeedbackBatch) => invoke<DeliveryAck>('send_review', { targetId, message }),
   feedbackStatus: (targetId: string, id: string) => invoke<DeliveryAck>('feedback_status', { targetId, id }),
   focusAgent: (targetId: string) => invoke<void>('focus_agent', { targetId }),
   recoveryStatus: () => invoke<RecoveryStatus>("recovery_status"),

@@ -179,6 +179,7 @@
       if (Number.isFinite(size)) document.body.style.fontSize = Math.max(12, Math.min(28, size)) + 'px';
     }
     if (!inspect) { clear(); selected = undefined; }
+    if (attachment && !event.data.attachment) getSelection()?.removeAllRanges();
     attachment = event.data.attachment; drawAttachment();
     if (firstConnection) { restorePosition(event.data.position); if (!restoring) scheduleCapture(); }
     send('ready');

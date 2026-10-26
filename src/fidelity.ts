@@ -46,7 +46,7 @@ export function replaceBody(original: string, body: string) {
   return prefix + separator + lineEndings(body, original);
 }
 
-export function sourceReason(text: string, allowDiagrams = false): string | undefined {
+export function sourceReason(text: string, preview = false): string | undefined {
   // Bound rich-editor work before parsing; Source can handle much larger files.
   if (text.length > 256 * 1024)
     return "Large documents use Source for responsive editing.";
@@ -61,25 +61,27 @@ export function sourceReason(text: string, allowDiagrams = false): string | unde
   let end = 0;
   const visit = (node: {
     type: string;
+    value?: string;
     children?: unknown[];
     url?: string;
     lang?: string;
     meta?: string | null;
     position?: { start: { offset?: number }; end: { offset?: number } };
   }) => {
-    if (node.type === "code" || node.type === "inlineCode") {
+    const comment = preview && node.type === "html" && /^(?:<!--(?:(?!-->)[\s\S])*-->[ \t\r\n]*)+$/.test(node.value ?? "");
+    if (node.type === "code" || node.type === "inlineCode" || comment) {
       const from = node.position?.start.offset;
       const to = node.position?.end.offset;
       if (from !== undefined && to !== undefined) {
-        // Keep code opaque without making adjacent inline text look like a new block.
+        // Keep code and hidden comments opaque without creating new prose blocks.
         prose.push(text.slice(end, from), "`code`");
         end = to;
       }
     }
-    if (!supported.has(node.type))
+    if (!supported.has(node.type) && !comment)
       reason =
         "HTML, references, or extension syntax is preserved in Source mode.";
-    if (node.type === "code" && ((!allowDiagrams && node.lang === "mermaid") || node.meta))
+    if (node.type === "code" && ((!preview && node.lang === "mermaid") || node.meta))
       reason = "Diagram or code metadata is preserved in Source mode.";
     if (
       node.url &&

@@ -27,6 +27,8 @@ validates context and project ancestry, persists a receipt with `appendEntry`,
 and calls `sendUserMessage(prompt, { deliverAs: 'followUp' })`. Busy sessions use
 Pi's follow-up queue. No public port, authentication service, or cloud dependency.
 
+Review batches use `{id, source: "sidelit", projectRoot?, notes: [...]}`. Each note has the existing message shape and keeps its own ID and intent. The receiver validates every note, distinct IDs, one exact project or live-page origin, and a 30 KiB aggregate limit before recording one receipt and calling Pi once. Limits are 1–20 notes; nested batches are rejected. Existing single messages keep the same wire format. Update the installed extension and run `/reload` before using batches; older receivers reject them without sending a prompt.
+
 Acknowledgments:
 
 - `received` + `submitted`/`queued`: the bridge recorded the message and invoked

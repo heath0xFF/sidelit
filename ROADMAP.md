@@ -2,7 +2,7 @@
 
 ## Batch review notes
 
-Status: planned after the single-request workflow shipped in v0.2.0.
+Status: implemented in v0.4.0. One local list, 20 notes, and one immutable batch delivery record. Add to review is the explicit local-save action. No task history, automatic sending, or completion tracking.
 
 While reading, collect several selected passages or elements with individual
 Explain, Review, or Edit instructions. Keep reading without sending each note
@@ -13,8 +13,10 @@ Acceptance criteria:
 
 - Add a note from text selection, element inspection, or the current document.
   Each note retains its instruction, intent, document identity and capture version.
-- Keep notes when hiding the composer, changing tabs, or refreshing. Decide and
-  document whether drafts survive app exit; do not imply persistence before it exists.
+- Keep saved notes when hiding the composer, changing tabs, refreshing, or exiting.
+  Composer edits require Add to review, Save note, or Save to Notes on exit before
+  they are stored. Quit, window close, and update/restart offer Save to Notes /
+  Discard / Cancel for unsent requests and unsaved note edits; failed saves stop exit.
 - Show a concise list with edit, remove and Reveal selection actions. Reattachment
   must fail closed, and stale or unsaved context must remain visible.
 - Let the user choose which notes to send, inspect the final payload and explicitly
@@ -27,3 +29,7 @@ Acceptance criteria:
   and the minimum window size. Preserve the single-request path and editor safety.
 
 Current behavior and delivery semantics are documented in [README.md](README.md).
+
+## switch html renderer for real browser?
+
+i have no idea if this is a good idea or not, but i wanted to capture it somewhere

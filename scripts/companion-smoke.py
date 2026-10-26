@@ -156,6 +156,7 @@ with tempfile.TemporaryDirectory(prefix='sidelit-companion-') as temp:
             rpc({'type': 'prompt', 'message': 'busy fixture'})
             wait(lambda: any(e.get('type') == 'agent_start' for e in events), 'Pi busy')
             click('Send to Pi')
+            wait(lambda: js('return document.querySelector(".feedback-button").textContent') == 'View request', 'attempted request is not labeled unsent')
             wait(lambda: 'Queued for Pi' in body() or 'Received' in body() or 'Pi accepted' in body(), 'native delivery acknowledgment')
             wait(lambda: 'Build useful things.' in file.read_text(), 'real Pi edit tool', 30)
             after_agent = wait(lambda: (m if (m := metrics()) and m['text'] == 'Build useful things.' else None), 'agent edit live refresh')

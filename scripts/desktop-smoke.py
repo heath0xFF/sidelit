@@ -58,6 +58,8 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     folder = (folder / 'notes').resolve()
     file = folder / '研究 notes.md'
     file.write_bytes(b'# Original\r\n\r\nA paragraph to edit.\r\n')
+    diagrams = folder / 'Diagrams.md'
+    diagrams.write_bytes(diagrams.read_bytes().replace(b'\n', b'\r\n'))
     before = file.read_bytes()
     modified = file.stat().st_mtime_ns
     started = time.monotonic()
@@ -97,6 +99,12 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
 
     wait(lambda: js('return document.querySelector(".ProseMirror h1")?.textContent') == 'Original', 'rendered editor')
     ready_seconds = round(time.monotonic() - started, 3)
+    # A tiling window manager can otherwise undo the test viewport sizes.
+    if shutil.which('aerospace'):
+        windows = subprocess.check_output(['aerospace', 'list-windows', '--all', '--format', '%{window-id} %{app-bundle-id}'], text=True)
+        for line in windows.splitlines():
+            if line.endswith(' ' + identifier):
+                subprocess.run(['aerospace', 'layout', '--window-id', line.split()[0], 'floating'], check=True)
     def instrument():
         js('window.__errors=[];window.__workers=[]; addEventListener("error",e=>__errors.push(e.message)); addEventListener("unhandledrejection",e=>__errors.push(String(e.reason?.stack||e.reason)));addEventListener("securitypolicyviolation",e=>__errors.push("CSP: "+e.violatedDirective+" "+e.blockedURI)); const W=window.Worker;window.Worker=class extends W{constructor(...a){super(...a);__workers.push(String(a[0]));this.addEventListener("error",e=>__errors.push("worker: "+e.message));}}')
     instrument()
@@ -316,6 +324,7 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     assert image_line in welcome.read_text(), 'Rich edit must preserve image alt text and path'
     welcome.write_text(original)
     wait(lambda: 'This is a sample document' in body(), 'restored sample')
+    js('document.querySelector(".milkdown-code-block")?.scrollIntoView({block:"center"})')
     wait(lambda: js('return !!document.querySelector(".cm-content")'), 'fenced code editor')
     assert 'Inconsolata' in js('return getComputedStyle(document.querySelector(".cm-scroller")).fontFamily')
     edit_rendered()
@@ -328,6 +337,7 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     history_action('undo')
     wait(lambda: not js('return !!document.querySelector(".tab.active .dirty-dot")'), 'code undo restores clean buffer')
     assert welcome.read_text() == original
+    js('document.querySelector(".rich-editor").scrollTop=0')
     check_column()
     screenshot('rendered.png')
     launch('Lists.md', cwd=folder)
@@ -360,10 +370,13 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     assert fixture.read_bytes() == initial
     # Inject the probe into test publications, not into shipping preview code.
     probe = '''addEventListener('message',e=>{if(e.data?.source!=='mermaid-test')return;
+      if(e.data.select){const svg=document.querySelector('.sidelit-diagram svg'),r=document.createRange();r.selectNodeContents(svg);getSelection().removeAllRanges();getSelection().addRange(r);svg.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}))}
+      if(e.data.escape)document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
       if(Number.isInteger(e.data.scroll)){document.dispatchEvent(new WheelEvent('wheel'));document.querySelectorAll('.sidelit-diagram')[e.data.scroll]?.scrollIntoView()}
       let parentBlocked=false;try{void parent.document.body}catch{parentBlocked=true}
       const svg=document.querySelector('.sidelit-diagram svg'),label=svg?.querySelector('text');
       parent.postMessage({source:'mermaid-test-result',diagrams:document.querySelectorAll('.sidelit-diagram svg').length,
+        highlights:document.querySelectorAll('[data-sidelit-overlay] > div').length,selectedText:getSelection()?.toString(),
         text:document.body.innerText,theme:document.documentElement.dataset.theme,font:getComputedStyle(document.body).fontSize,
         labelSize:label&&getComputedStyle(label).fontSize,color:label&&getComputedStyle(label).fill,
         width:document.documentElement.scrollWidth,viewport:innerWidth,ipc:typeof window.__TAURI_INTERNALS__,parentBlocked,
@@ -379,11 +392,9 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
         window.__mermaidReady=true})''', probe)
     wait(lambda: js('return window.__mermaidReady'), 'diagram test transport')
     try:
-        diagrams = folder / 'Diagrams.md'
-        diagrams.write_bytes(diagrams.read_bytes().replace(b'\n', b'\r\n'))
         diagram_bytes, diagram_stamp = diagrams.read_bytes(), diagrams.stat().st_mtime_ns
         launch(diagrams)
-        wait(lambda: 'Mermaid preview is read-only' in body(), 'read-only diagram preview')
+        wait(lambda: 'This preview is read-only' in body(), 'read-only diagram preview')
         assert not js('return !!document.querySelector(".ProseMirror,button[aria-label=\\"Edit rendered Markdown\\"]")')
         assert js('return document.querySelector(".preview-frame").getAttribute("sandbox")') == 'allow-scripts'
         def diagram_metrics():
@@ -394,29 +405,71 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
         assert 'not a diagram' in rendered['text'] and 'Use Source' in rendered['text'], rendered
         address = rendered['url']
         set_theme('dark')
-        dark_diagram = wait(lambda: (m if (m := diagram_metrics()) and m['theme'] == 'dark' else None), 'dark diagrams')
+        dark_diagram = wait(lambda: (m if (m := diagram_metrics()) and m['theme'] == 'dark' and m['color'] == 'rgb(213, 214, 223)' else None), 'dark diagrams')
         request(f'/session/{session}/window/rect', {'width': 1180, 'height': 820})
         screenshot('mermaid-dark.png')
+        js('document.querySelector(".preview-frame").contentWindow.postMessage({source:"mermaid-test",select:true},"*")')
+        wait(lambda: js('return !!document.querySelector(".selection-actions")'), 'diagram selection actions')
+        click('Explain')
+        wait(lambda: (m := diagram_metrics()) and m['highlights'] > 0, 'diagram selection highlight')
+        js('document.querySelector(".feedback-panel textarea").dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}))')
+        wait(lambda: js('return document.querySelector(".feedback-panel").hidden') and (m := diagram_metrics()) and m['highlights'] == 0 and not m['selectedText'], 'Escape clears sandbox highlight and native selection')
+        assert js('return document.querySelector(".feedback-button").textContent') == 'Unsent draft'
+        time.sleep(.2)
+        screenshot('mermaid-hidden-draft.png')
+        js('document.querySelector(".feedback-button").click()')
+        wait(lambda: (m := diagram_metrics()) and m['highlights'] > 0, 'resumed diagram highlight')
+        click('Reveal selection')
+        wait(lambda: js('return document.querySelector(".feedback-panel").hidden') and (m := diagram_metrics()) and m['highlights'] > 0, 'explicit diagram reveal')
+        js('document.querySelector(".preview-frame").contentWindow.postMessage({source:"mermaid-test",escape:true},"*")')
+        wait(lambda: (m := diagram_metrics()) and m['highlights'] == 0 and not m['selectedText'], 'Escape inside sandbox clears selection and highlight')
+        js('document.querySelector(".feedback-button").click()')
+        click('Discard request')
+        assert js('return document.querySelector(".feedback-button").textContent') == 'Feedback'
         set_theme('light')
         set_size(24)
-        light_diagram = wait(lambda: (m if (m := diagram_metrics()) and m['theme'] == 'light' and m['font'] == '24px' and m['labelSize'] != dark_diagram['labelSize'] else None), 'live diagram theme and font size')
+        light_diagram = wait(lambda: (m if (m := diagram_metrics()) and m['theme'] == 'light' and m['font'] == '24px' and m['labelSize'] != dark_diagram['labelSize'] and m['color'] != dark_diagram['color'] else None), 'live diagram theme and font size')
         assert light_diagram['url'] == address and light_diagram['color'] != dark_diagram['color'], light_diagram
         request(f'/session/{session}/window/rect', {'width': 720, 'height': 630})
         js('document.querySelector(".preview-frame").contentWindow.postMessage({source:"mermaid-test",scroll:0},"*")')
         wait(lambda: (m := diagram_metrics()) and m['width'] <= m['viewport'] + 1 and abs(m['diagramTop']) <= 2, 'narrow diagram without page overflow')
         screenshot('mermaid-light-narrow.png')
         js('document.querySelector(".preview-frame").contentWindow.postMessage({source:"mermaid-test",scroll:2},"*")')
-        wait(lambda: (m := diagram_metrics()) and 0 <= m['errorTop'] < 300, 'visible invalid diagram source')
+        wait(lambda: (m := diagram_metrics()) and m['errorTop'] is not None and 0 <= m['errorTop'] < 300, 'visible invalid diagram source')
         screenshot('mermaid-invalid.png')
         set_size(16)
         click('Source')
         wait(lambda: js('return !!document.querySelector(".monaco-editor")'), 'diagram source editor')
         assert source_text().replace('\r\n', '\n') == diagram_bytes.decode().replace('\r\n', '\n')
         click('Rendered')
-        wait(lambda: 'Mermaid preview is read-only' in body(), 'return to diagram preview')
+        wait(lambda: 'This preview is read-only' in body(), 'return to diagram preview')
         click('Save')
         time.sleep(.2)
         assert diagrams.read_bytes() == diagram_bytes and diagrams.stat().st_mtime_ns == diagram_stamp
+        assert not js('return !!document.querySelector(".tab.active .dirty-dot")')
+        product = folder / 'PRODUCT.md'
+        product.write_bytes(b'# Product\r\n\r\n<!-- impeccable:product-schema 1 -->\r\n\r\nRead <!-- hidden $metadata -->this product record.\r\n')
+        product_bytes, product_stamp = product.read_bytes(), product.stat().st_mtime_ns
+        js('window.__mermaidMetrics=null')
+        launch(product)
+        wait(lambda: 'This preview is read-only' in body(), 'read-only comment preview')
+        rendered = wait(lambda: (m if (m := diagram_metrics()) and 'Read this product record.' in m['text'] else None), 'visible prose without comments')
+        assert 'impeccable' not in rendered['text'] and 'metadata' not in rendered['text'], rendered
+        assert rendered['parentBlocked'] and rendered['ipc'] == 'undefined', rendered
+        assert not js('return !!document.querySelector(".ProseMirror,button[aria-label=\\"Edit rendered Markdown\\"]")')
+        screenshot('comments-light.png')
+        set_theme('dark')
+        request(f'/session/{session}/window/rect', {'width': 1180, 'height': 820})
+        wait(lambda: (m := diagram_metrics()) and m['theme'] == 'dark', 'dark comment preview')
+        screenshot('comments-dark.png')
+        click('Source')
+        wait(lambda: js('return !!document.querySelector(".monaco-editor")'), 'comment source editor')
+        assert source_text().replace('\r\n', '\n') == product_bytes.decode().replace('\r\n', '\n')
+        click('Rendered')
+        wait(lambda: 'This preview is read-only' in body(), 'return to comment preview')
+        click('Save')
+        time.sleep(.2)
+        assert product.read_bytes() == product_bytes and product.stat().st_mtime_ns == product_stamp
         assert not js('return !!document.querySelector(".tab.active .dirty-dot")')
     finally:
         js('window.__mermaidApi.publishPreview=window.__mermaidPublish;removeEventListener("message",window.__mermaidListener)')
@@ -432,7 +485,7 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     readme_before = readme.read_bytes()
     readme_stamp = readme.stat().st_mtime_ns
     launch(readme)
-    wait(lambda: js('return !!document.querySelector(".preview-frame")') and 'Mermaid preview is read-only' in body(), 'project README diagram preview')
+    wait(lambda: js('return !!document.querySelector(".preview-frame")') and 'This preview is read-only' in body(), 'project README diagram preview')
     assert not js('return !!document.querySelector(".tab.active .dirty-dot")')
     click('Source')
     wait(lambda: js('return !!document.querySelector(".monaco-editor")'), 'README source')
@@ -662,7 +715,7 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     wait(lambda: not js('return !!document.querySelector(".tab.active .dirty-dot")'), 'checkpoint test discarded')
     errors = errors_before_crash + js('return __errors')
     assert errors == [], errors
-    report = {'handoffSeconds': timing, 'editorReadySeconds': ready_seconds, 'warmHandoffSeconds': warm, 'workers': workers_before_crash + js('return __workers'), 'errors': errors, 'checks': 'Mermaid sandbox, source fallback, CRLF no-op save, themes, font size and narrow layout; Crepe input; Monaco input; 80% rendered column and narrow gutter; keyboard/menu undo and redo in both editors, code blocks, and search inputs; disk reload history reset; undo/redo disk adoption; read-only history guards; CRLF; no-op save; mode/tab switches; clean refresh; conflict/diff; discard/cancel; rename; delete/recreate; repeated CLI; Unicode/caller cwd; local image and alt fidelity; project README preview/mode/no-op save; user guide rich editing; literal code preserved and HTML examples inert; frontmatter; dirty close/quit cancel; save on close; task/numbered/nested/wrapped list alignment at 12–28px; local fonts; One themes; system preference; live sizing without editor remounts; opaque frontmatter rich editing; sticky Source; scoped Quick Open; background close selection; editable diff and keyboard change acceptance; stale merged-save rejection; clean change review; New/Save As UI (native selection simulated); Save As cancel/failure; recovery checkpoint, process crash, restart, conflict-safe restore (native approval simulated), and deletion'}
+    report = {'handoffSeconds': timing, 'editorReadySeconds': ready_seconds, 'warmHandoffSeconds': warm, 'workers': workers_before_crash + js('return __workers'), 'errors': errors, 'checks': 'HTML comment read-only preview and byte preservation; Mermaid sandbox, source fallback, CRLF no-op save, themes, font size and narrow layout; Crepe input; Monaco input; 80% rendered column and narrow gutter; keyboard/menu undo and redo in both editors, code blocks, and search inputs; disk reload history reset; undo/redo disk adoption; read-only history guards; CRLF; no-op save; mode/tab switches; clean refresh; conflict/diff; discard/cancel; rename; delete/recreate; repeated CLI; Unicode/caller cwd; local image and alt fidelity; project README preview/mode/no-op save; user guide rich editing; literal code preserved and HTML examples inert; frontmatter; dirty close/quit cancel; save on close; task/numbered/nested/wrapped list alignment at 12–28px; local fonts; One themes; system preference; live sizing without editor remounts; opaque frontmatter rich editing; sticky Source; scoped Quick Open; background close selection; editable diff and keyboard change acceptance; stale merged-save rejection; clean change review; New/Save As UI (native selection simulated); Save As cancel/failure; recovery checkpoint, process crash, restart, conflict-safe restore (native approval simulated), and deletion'}
     (OUT / 'desktop.json').write_text(json.dumps(report, indent=2))
     print(json.dumps(report, indent=2))
     # Close only the temporary documents; the app remains available for manual checks.

@@ -21,7 +21,7 @@ function rendering(path: string, text: string, mode: Mode) {
   const editReason = mode === "rendered" && formatForPath(path) === "markdown"
     ? sourceReason(text)
     : undefined;
-  // Mermaid can be read in the sandbox, but must not enter the rich editor.
+  // Diagrams and comments can be previewed safely, but must not enter the rich editor.
   const reason = editReason ? sourceReason(text, true) : undefined;
   return { mode: reason ? "source" as const : mode, reason, previewOnly: !!editReason && !reason };
 }

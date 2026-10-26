@@ -16,13 +16,25 @@ async function exchange(path: string, value: unknown, fragmented = false): Promi
   });
 }
 describe('Pi socket bridge', () => {
+  it('bounds batches and rejects mixed projects, duplicate IDs, invalid notes and nested batches', () => {
+    const batch = { id: 'batch', source: 'sidelit', projectRoot: '/tmp', notes: [message(), message()] };
+    expect(validFeedback(batch, '/tmp')).toBe(true);
+    expect(validFeedback({ ...batch, notes: [] }, '/tmp')).toBe(false);
+    expect(validFeedback({ ...batch, notes: [batch] }, '/tmp')).toBe(false);
+    expect(validFeedback({ ...batch, notes: [batch.notes[0], batch.notes[0]] }, '/tmp')).toBe(false);
+    expect(validFeedback({ ...batch, notes: [{ ...message(), id: 'batch' }] }, '/tmp')).toBe(false);
+    expect(validFeedback({ ...batch, notes: [message(), { ...message(), projectRoot: '/tmp/other' }] }, '/tmp')).toBe(false);
+    expect(validFeedback({ ...batch, notes: [message(), { ...message(), selection: { type: 'bogus', text: '' } }] }, '/tmp')).toBe(false);
+    expect(validFeedback({ ...batch, notes: Array.from({ length: 21 }, message) }, '/tmp')).toBe(false);
+    expect(validFeedback({ ...batch, notes: Array.from({ length: 6 }, () => ({ ...message(), instruction: '語'.repeat(2000) })) }, '/tmp')).toBe(false);
+  });
   it('validates structured context and includes the inspected styles in the instruction', () => {
     const feedback = message(); expect(validFeedback(feedback, '/tmp')).toBe(true);
     expect(validFeedback({ ...feedback, projectRoot: '/different' }, '/tmp')).toBe(false);
     expect(validFeedback({ ...feedback, selection: 'bad' }, '/tmp')).toBe(false);
     expect(promptFor(feedback)).toContain('32px');
   });
-  it('queues busy feedback, waits for consumption, deduplicates, survives reload and cleans up', async () => {
+  it.each(['single', 'batch'])('queues busy %s feedback, waits for consumption, deduplicates, survives reload and cleans up', async kind => {
     const module = '../extensions/pi-sidelit/index.ts';
     const { default: extension, registryDirectory } = await import(/* @vite-ignore */ module);
     const hooks = new Map<string, Function>(); const sent: any[] = [], entries: any[] = [];
@@ -35,13 +47,17 @@ describe('Pi socket bridge', () => {
     const path = `${registryDirectory()}/${id}.sock`;
     expect((await stat(path)).mode & 0o777).toBe(0o600);
     expect(JSON.parse(await readFile(path + '.json', 'utf8')).busy).toBe(true);
-    const feedback = { ...message(), projectRoot: '/private/tmp' };
+    const feedback = kind === 'batch'
+      ? { id: randomUUID(), source: 'sidelit' as const, projectRoot: '/private/tmp', notes: [message(), { ...message(), intent: 'explain' as const, instruction: 'Explain without editing files' }] }
+      : { ...message(), projectRoot: '/private/tmp' };
     expect(await exchange(path, { op: 'ping', id: 'health' })).toMatchObject({ id: 'health', status: 'ready', protocol: 1 });
     expect(sent).toHaveLength(0); expect(entries).toHaveLength(0);
     // /tmp is canonicalized to /private/tmp on macOS.
     feedback.projectRoot = JSON.parse(await readFile(path + '.json', 'utf8')).projectRoot;
+    if ('notes' in feedback) feedback.notes!.forEach(note => { note.projectRoot = feedback.projectRoot; });
     expect(await exchange(path, feedback, true)).toMatchObject({ status: 'received', delivery: 'queued' });
     expect(sent).toHaveLength(1); expect(sent[0][1]).toEqual({ deliverAs: 'followUp' });
+    if (kind === 'batch') { expect(sent[0][0]).toContain('Review batch: 2 notes'); expect(sent[0][0]).toContain('Explain without editing files'); }
     await exchange(path, feedback); expect(sent).toHaveLength(1);
     expect(await exchange(path, { ...feedback, instruction: 'Different' })).toMatchObject({ status: 'error' });
     hooks.get('message_start')!({ message: { role: 'user', content: [{ type: 'text', text: sent[0][0] }] } });
