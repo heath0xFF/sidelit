@@ -12,18 +12,33 @@ function contrast(foreground: string, background: string) {
   return (high + 0.05) / (low + 0.05);
 }
 
-describe('Rex-inspired palette contrast', () => {
+describe('The Fold palette contrast', () => {
   const shell = readFileSync('src/style.css', 'utf8');
   const blocks = [...shell.matchAll(/:root(?:\[data-theme="dark"\])?\s*\{([^}]+)\}/g)]
     .map(match => Object.fromEntries([...match[1].matchAll(/--([\w-]+):\s*(#[\da-f]{6});/g)].map(match => [match[1], match[2]])));
   for (const [index, theme] of ['light', 'dark'].entries()) {
     it(`keeps ${theme} shell and editor text readable`, () => {
       const colors = { ...blocks[0], ...blocks[index] };
-      const pairs = [['text', 'paper'], ['muted', 'paper'], ['muted', 'chrome'], ['accent', 'chrome'], ['on-action', 'action']];
+      const pairs = [['text', 'paper'], ['muted', 'paper'], ['muted', 'chrome'], ['accent', 'paper'], ['accent', 'chrome'], ['accent', 'selected'], ['on-action', 'action'], ['on-action', 'action-hover'], ['text', 'selected'], ['text', 'warning'], ['error', 'paper'], ['error', 'chrome'], ['error', 'warning']];
       for (const key of Object.keys(colors).filter(key => key.startsWith('syntax-'))) {
         pairs.push([key, 'paper'], [key, 'chrome']);
       }
       for (const [fg, bg] of pairs) expect(contrast(colors[fg], colors[bg]), `${theme}: ${fg} on ${bg}`).toBeGreaterThanOrEqual(4.5);
+    });
+    it(`keeps ${theme} actions and focus visible against their surfaces`, () => {
+      const colors = { ...blocks[0], ...blocks[index] };
+      for (const foreground of ['accent', 'action', 'action-hover']) {
+        for (const background of ['paper', 'chrome', 'hover', 'active']) {
+          expect(contrast(colors[foreground], colors[background]), `${theme}: ${foreground} on ${background}`).toBeGreaterThanOrEqual(3);
+        }
+      }
+    });
+    it(`keeps ${theme} preview links, diagrams, and selections aligned with the shell`, () => {
+      const colors = { ...blocks[0], ...blocks[index] };
+      const prefix = theme === 'light' ? 'html[data-theme=light] ' : '';
+      expect(mdxStyle).toContain(`${prefix}a{color:${colors.accent}}`);
+      expect(mdxStyle).toContain(`--pele-accent:${colors.accent};`);
+      expect(mdxStyle).toContain(`${prefix}::selection{background:${colors.selected};color:${colors.text}}`);
     });
     it(`keeps ${theme} MDX syntax readable in the isolated stylesheet`, () => {
       const colors: Record<string, string> = {};

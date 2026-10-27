@@ -37,6 +37,8 @@ import { ReviewNotes } from './review';
 import DevServerDialog from "./DevServerDialog";
 import { chooseTarget } from './agent-targets';
 import { forgetPreviewPosition } from './preview-position';
+import lightIcon from "../scripts/icon.svg";
+import darkIcon from "../scripts/icon-dark.svg";
 
 let sourceModule: typeof import("./Source") | undefined;
 const Source = lazy(async () => (sourceModule = await import("./Source")));
@@ -1174,11 +1176,10 @@ export default function App() {
             />
           ) : (
             <section className="empty">
-              <div className="empty-mark" aria-hidden="true">
-                <span />
-                <span />
-                <span />
-              </div>
+              <picture className="empty-mark" aria-hidden="true">
+                <source srcSet={darkIcon} media="(prefers-color-scheme: dark)" />
+                <img src={lightIcon} width="48" height="48" alt="" />
+              </picture>
               <h1>
                 See the result.
                 <br />

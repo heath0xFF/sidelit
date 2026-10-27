@@ -9,16 +9,16 @@ type ReadAsset = (document: string, reference: string) => Promise<PreviewAsset>;
 export const mdxStyle = `
 @font-face{font-family:SidelitProse;src:url('${proseFont}');font-weight:100 900}@font-face{font-family:SidelitProse;src:url('${italicFont}');font-weight:100 900;font-style:italic}@font-face{font-family:SidelitMono;src:url('${monoFont}');font-weight:200 900}
 body{margin:0;padding:32px max(24px,8%);color:#d5d6df;background:#333643;font:16px/1.6 SidelitProse,-apple-system,BlinkMacSystemFont,sans-serif}
-html[data-theme=light] body{color:#363744;background:#fafafd}html[data-theme=light] pre{background:#eeeef4}html[data-theme=light] a{color:#6346c7}
+html[data-theme=light] body{color:#363744;background:#fafafd}html[data-theme=light] pre{background:#eeeef4}html[data-theme=light] a{color:#945018}html[data-theme=light] ::selection{background:#f3e1ca;color:#363744}
 html[data-theme=light] .tok-keyword{color:#a626a4}html[data-theme=light] .tok-string{color:#407840}html[data-theme=light] .tok-variableName{color:#b83a34}
 html[data-theme=light] .tok-number,html[data-theme=light] .tok-bool,html[data-theme=light] .tok-typeName{color:#805500}html[data-theme=light] .tok-comment{color:#686a7c}
 ul.contains-task-list{list-style:none;padding-left:1.2em}li.task-list-item input{margin-left:-1.2em}h1:first-child{margin-top:0}
-h1,h2,h3{line-height:1.25}h1{font-size:2em}h2{margin-top:1.6em}a{color:#b4a7ff}img{max-width:100%}
+h1,h2,h3{line-height:1.25}h1{font-size:2em}h2{margin-top:1.6em}a{color:#ffc477}a:focus-visible{outline:2px solid currentColor;outline-offset:2px}::selection{background:#594733;color:#d5d6df}img{max-width:100%}
 pre,code{font-family:SidelitMono,ui-monospace,SFMono-Regular,monospace}pre{padding:16px;overflow:auto;background:#30323e;border-radius:6px}code{font-size:.95em}
 table{border-collapse:collapse}th,td{border:1px solid #4b5260;padding:6px 12px}th{text-align:left}blockquote{margin-left:0;padding-left:16px;border-left:1px solid #4b5260}
 .sidelit-callout,.sidelit-card{padding:12px 16px;border:1px solid #4b5260;margin:16px 0}.sidelit-badge{padding:2px 6px;background:#3e4451}.sidelit-stack{display:grid;gap:12px}
-.sidelit-diagram{margin:24px 0;--pele-bg:#333643;--pele-fg:#d5d6df;--pele-muted:#a5a7b8;--pele-line:#a5a7b8;--pele-surface:#30323e;--pele-surface-alt:#3a3d4b;--pele-border:#55596b;--pele-accent:#b4a7ff;--pele-error:#e06c75;--pele-font:SidelitProse,sans-serif;--pele-font-mono:SidelitMono,monospace}
-html[data-theme=light] .sidelit-diagram{--pele-bg:#fafafd;--pele-fg:#363744;--pele-muted:#686a7c;--pele-line:#686a7c;--pele-surface:#eeeef4;--pele-surface-alt:#e4e4ec;--pele-border:#c7c8d6;--pele-accent:#6346c7;--pele-error:#b83a34}
+.sidelit-diagram{margin:24px 0;--pele-bg:#333643;--pele-fg:#d5d6df;--pele-muted:#a5a7b8;--pele-line:#a5a7b8;--pele-surface:#30323e;--pele-surface-alt:#3a3d4b;--pele-border:#55596b;--pele-accent:#ffc477;--pele-error:#f08c95;--pele-font:SidelitProse,sans-serif;--pele-font-mono:SidelitMono,monospace}
+html[data-theme=light] .sidelit-diagram{--pele-bg:#fafafd;--pele-fg:#363744;--pele-muted:#686a7c;--pele-line:#686a7c;--pele-surface:#eeeef4;--pele-surface-alt:#e4e4ec;--pele-border:#c7c8d6;--pele-accent:#945018;--pele-error:#b83a34}
 .sidelit-diagram>div{overflow:auto}.sidelit-diagram summary{cursor:pointer;color:var(--pele-muted)}.sidelit-diagram summary:focus-visible{outline:2px solid var(--pele-accent);outline-offset:2px}
 .sidelit-diagram [role=status]{color:var(--pele-error);overflow-wrap:anywhere}
 .tok-keyword{color:#d797e6}.tok-string{color:#98c379}.tok-number,.tok-bool{color:#d19a66}.tok-comment{color:#a5a7b8}.tok-variableName{color:#f08c95}.tok-typeName{color:#e5c07b}

@@ -14,7 +14,7 @@
     if (!element || element === overlay) return;
     const rect = element.getBoundingClientRect();
     if (!overlay) { overlay = document.createElement('div'); overlay.dataset.sidelitOverlay = ''; document.documentElement.append(overlay); }
-    overlay.style.cssText = `position:fixed;pointer-events:none;z-index:2147483647;border:2px solid #9b87ff;box-sizing:border-box;left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px;`;
+    overlay.style.cssText = `position:fixed;pointer-events:none;z-index:2147483647;border:2px solid #ffc477;outline:1px solid #30261a;box-sizing:border-box;left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px;`;
   };
   const selector = element => {
     const parts = [];
@@ -72,7 +72,7 @@
     attachmentOverlay = document.createElement('div'); attachmentOverlay.dataset.sidelitOverlay = '';
     for (const rect of Array.from(target.getClientRects()).slice(0, 100)) {
       const part = document.createElement('div');
-      part.style.cssText = `position:fixed;pointer-events:none;z-index:2147483646;background:rgba(155,135,255,.18);outline:1px solid #9b87ff;left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px`;
+      part.style.cssText = `position:fixed;pointer-events:none;z-index:2147483646;background:rgba(255,196,119,.18);border:1px solid #ffc477;outline:1px solid #30261a;box-sizing:border-box;left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px`;
       attachmentOverlay.append(part);
     }
     document.documentElement.append(attachmentOverlay);

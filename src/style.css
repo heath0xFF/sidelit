@@ -11,11 +11,11 @@
   --text: #363744;
   --muted: #686a7c;
   --line: #c7c8d6;
-  --accent: #6346c7;
-  --action: #6950e8;
-  --action-hover: #5b42d5;
+  --accent: #945018;
+  --action: #a95718;
+  --action-hover: #8f4512;
   --on-action: #ffffff;
-  --selected: #e5def9;
+  --selected: #f3e1ca;
   --warning: #fff2d5;
   --error: #b83a34;
   --syntax-keyword: #a626a4;
@@ -50,10 +50,13 @@
   --text: #d5d6df;
   --muted: #a5a7b8;
   --line: #55596b;
-  --accent: #b4a7ff;
-  --selected: #504a6c;
+  --accent: #ffc477;
+  --action: #efad52;
+  --action-hover: #ffc477;
+  --on-action: #30261a;
+  --selected: #594733;
   --warning: #443c2d;
-  --error: #e06c75;
+  --error: #f08c95;
   --syntax-keyword: #d797e6;
   --syntax-string: #98c379;
   --syntax-number: #d19a66;
@@ -985,26 +988,11 @@ textarea {
   overflow: auto;
 }
 .empty-mark {
-  display: flex;
-  gap: 5px;
-  height: 38px;
-  align-items: flex-end;
+  flex-shrink: 0;
   margin-bottom: 32px;
 }
-.empty-mark span {
+.empty-mark img {
   display: block;
-  width: 7px;
-  height: 38px;
-  background: var(--accent);
-  border-radius: 2px;
-}
-.empty-mark span:nth-child(2) {
-  height: 28px;
-  opacity: 0.65;
-}
-.empty-mark span:nth-child(3) {
-  height: 18px;
-  opacity: 0.35;
 }
 .empty h1 {
   font-size: clamp(30px, 3vw, 42px);

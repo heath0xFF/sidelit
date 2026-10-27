@@ -2,10 +2,10 @@
 name: Sidelit
 description: A visual work surface beside Rex.
 colors:
-  accent: "#b4a7ff"
-  action: "#6950e8"
-  action-hover: "#5b42d5"
-  on-action: "#ffffff"
+  accent: "#ffc477"
+  action: "#efad52"
+  action-hover: "#ffc477"
+  on-action: "#30261a"
   paper: "#333643"
   chrome: "#30323e"
   hover: "#3a3d4b"
@@ -14,16 +14,19 @@ colors:
   text: "#d5d6df"
   muted: "#a5a7b8"
   line: "#55596b"
-  selected: "#504a6c"
+  selected: "#594733"
   warning: "#443c2d"
-  error: "#e06c75"
+  error: "#f08c95"
   syntax-keyword: "#d797e6"
   syntax-string: "#98c379"
   syntax-number: "#d19a66"
   syntax-function: "#61afef"
   syntax-variable: "#f08c95"
   syntax-type: "#e5c07b"
-  light-accent: "#6346c7"
+  light-accent: "#945018"
+  light-action: "#a95718"
+  light-action-hover: "#8f4512"
+  light-on-action: "#ffffff"
   light-paper: "#fafafd"
   light-chrome: "#eeeef4"
   light-hover: "#e4e4ec"
@@ -32,7 +35,7 @@ colors:
   light-text: "#363744"
   light-muted: "#686a7c"
   light-line: "#c7c8d6"
-  light-selected: "#e5def9"
+  light-selected: "#f3e1ca"
   light-warning: "#fff2d5"
   light-error: "#b83a34"
   light-syntax-keyword: "#a626a4"
@@ -133,35 +136,35 @@ components:
 
 **Creative North Star: "A visual work surface beside Rex"**
 
-Sidelit uses the observed native Superlogical Rex language: blue-charcoal layers, violet actions, quiet outline icons, soft tabs, and inset panes. These colors are Sidelit approximations, not official Rex tokens. The public documentation website has a different light design and is not the visual source. No Rex logos, proprietary fonts, or artwork are copied.
+Sidelit keeps the Rex-inspired structure: blue-charcoal layers, quiet outline icons, soft tabs, and inset panes. The Fold icon supplies the warm amber and burnt-orange accents. These are Sidelit colors, not official Rex tokens. No Rex logos, proprietary fonts, or artwork are copied.
 
 The interface stays compact around the document. Preserve the folder tree, tabs, Rendered/Source modes, explicit saves, and contextual feedback to Pi. Dark is the new-install default; explicit System and Light preferences remain valid. HTML and development-server pages retain their own visual identity.
 
 **Key Characteristics:**
 
 - Tonal layers and restrained borders keep the document prominent.
-- Violet distinguishes intentional actions, focus, inspection, and unsaved state.
+- Warm amber and burnt orange distinguish intentional actions, focus, inspection, and unsaved state.
 - Bundled prose and monospace fonts support offline reading and editing.
 
 Source of truth: `src/style.css`, `src/App.tsx`, `src/Rich.tsx`, `src/SelectionActions.tsx`, `src/FeedbackComposer.tsx`, and the isolated stylesheet in `src/preview-html.ts`. Existing packaged captures are in `test-results/polish/rex/` (1180×790, 720×630, and minimum 720×480), with `test-results/companion-mdx.png` and `companion-mdx-light.png` for standalone MDX. These are reference artifacts, not a claim of new testing in this documentation pass.
 
 ## Colors
 
-Dark uses blue-charcoal surfaces and a pale violet accent; Light keeps the same hierarchy on cool pale surfaces. Unprefixed frontmatter tokens describe Dark; `light-*` entries are Light overrides. Action, action-hover, and on-action are shared. The sidebar uses chrome.
+Dark uses blue-charcoal surfaces with amber accents and amber buttons with dark text. Light keeps the same hierarchy on cool pale surfaces, with burnt-orange buttons and white text. Unprefixed frontmatter tokens describe Dark; `light-*` entries are Light overrides. The sidebar uses chrome.
 
 ### Primary
 
-Accent colors serve links, Save, focus rings, inspection outlines, and unsaved dots. The stronger action fill serves primary buttons and the open-sidebar toggle, with white on-action text.
+Accent colors serve links, Save, focus rings, inspection outlines, and unsaved dots. The action fill serves primary buttons and the open-sidebar toggle. Use the theme's on-action color for button text and inset focus rings: dark brown in Dark, white in Light.
 
 ### Neutral
 
-Paper is the work surface; chrome frames it and backs code blocks. Hover and active provide neutral interaction layers. Rule is the quiet separator; line bounds inputs and overlays. Text and muted distinguish document content from supporting labels. Selected is the violet-tinted text/inspection selection.
+Paper is the work surface; chrome frames it and backs code blocks. Hover and active provide neutral interaction layers. Rule is the quiet separator; line bounds inputs and overlays. Text and muted distinguish document content from supporting labels. Selected is the muted warm text/inspection selection.
 
 ### Semantic colors
 
-Warning is amber; error is red. Syntax retains keyword, string, number, function, variable, and type roles. The corrected light amber and dark keyword/variable values are normative in frontmatter. `tests/palette.test.ts` covers shell/editor text and syntax contrast, plus isolated MDX syntax, at a minimum 4.5:1 for its enumerated pairs. It is not a blanket accessibility certification.
+Warnings keep their muted yellow-brown surfaces and explicit labels; errors use red in Light and rose in Dark, distinct from the brand amber. Syntax colors are unchanged. `tests/palette.test.ts` checks text, links, action labels, selected text, errors, and syntax at a minimum 4.5:1 for its listed pairs, plus action/focus contrast at 3:1. It also checks isolated preview link, diagram, and selection colors against the shell. This is not a blanket accessibility certification.
 
-**The State Color Rule.** Use neutral fills for selected tabs and tree rows, violet for actions and focus, and amber for conflicts and preview warnings. Preserve text labels alongside status color.
+**The State Color Rule.** Use neutral fills for selected tabs and tree rows, warm accents for actions and focus, and muted warning surfaces with explicit text for conflicts and preview warnings. Do not use brand color alone to indicate a warning.
 
 ## Typography
 
@@ -197,7 +200,9 @@ The user-supplied “The Fold” icon pack replaces the previous app icon. The l
 and dark artwork is retained without changes in `src-tauri/icons/`; editable SVG
 sources are in `scripts/icon.svg` and `scripts/icon-dark.svg`. The running macOS
 Dock icon follows system appearance at startup and on changes, independently of
-the editor preference. Finder uses the static light bundle icon. See
+the editor preference. The welcome screen uses the same SVG artwork, with a
+48px icon and native `prefers-color-scheme` selection. Finder uses the static
+light bundle icon. See
 `src-tauri/icons/README.md` for provenance and native checks.
 
 ## Shapes
@@ -206,13 +211,13 @@ Controls use gentle corners, panes and menus use larger corners, and tabs plus t
 
 ## Components
 
-- **Buttons:** quiet transparent defaults, neutral hover, and half-opacity disabled states. Primary buttons use the shared action fill and darker action hover; feedback uses the compact primary variant. Secondary dialog/conflict actions add a line border. Focus is a 2px accent outline inset by 2px; filled actions use a white outline inset by 4px.
+- **Buttons:** quiet transparent defaults, neutral hover, and half-opacity disabled states. Primary buttons use the theme's action fill and hover color; feedback uses the compact primary variant. Secondary dialog/conflict actions add a line border. Focus is a 2px accent outline inset by 2px; filled actions use the on-action color inset by 4px.
 - **Navigation:** soft active tabs, neutral selected tree rows, ellipsized filenames, horizontal tab overflow, and separate named close controls. The mode switch groups two pressed-state buttons; Rendered and Source are alternatives. A fidelity-forced Source fallback stays selected until the user changes mode.
 - **Actions and fields:** the native details disclosure groups file operations, recovery, update checks, theme, and text size. Appearance adjustments keep it open; Escape closes it and returns focus, while outside input/focus closes it. Quick Open is a labelled combobox with keyboard selection, bounded results, and loading/error states. Inputs use quiet line borders, muted placeholders, and visible focus.
 - **Document safety:** frontmatter stays outside rendered prose with a Source note. Amber conflicts expose Compare, Reload from Disk, and Save Copy. Comparison identifies the read-only reviewed disk version and editable draft; change arrows remain labelled and keyboard-operable. Save Merged checks the reviewed hash. Clean external changes have a separate read-only review.
 - **Reading and selection:** rendered Markdown starts read-only. Toolbar Edit enables direct editing; Done editing returns to reading, as do tab and mode changes. Text selection exposes adjacent Explain, Review, and Edit request actions. Request Edit asks Pi for a change; it is separate from the toolbar's local editing control.
 - **Request composer:** one in-memory request retains its intent, instruction, captured context, and delivery state across tabs and Hide/Escape. The highlighted toolbar action shows Unsent draft and reopens it, including at narrow widths. After delivery starts, View request replaces that label; an uncertain receipt must not be called unsent. A new selection is offered through Use new selection before sending; it never silently replaces the attachment. The pressed intent uses the selected fill; the summary and document label lead a collapsible Attached context disclosure and one instruction field.
-- **Context and highlight:** amber notices distinguish unsaved captures, changed file context, and live-page uncertainty. Stale file context requires Send the captured version before the first send. The attachment highlight uses a violet tint and outline independently of native text selection, while the composer is open or after an explicit Reveal selection. Hide/Escape clears the highlight without deleting the request. Reveal selection returns to the attached document and locates the capture; missing or ambiguous text, mismatched elements, and changed page routes fail closed. A closed file must be reopened first.
+- **Context and highlight:** amber notices distinguish unsaved captures, changed file context, and live-page uncertainty. Stale file context requires Send the captured version before the first send. The attachment highlight uses a warm tint and outline independently of native text selection, while the composer is open or after an explicit Reveal selection. Hide/Escape clears the highlight without deleting the request. Reveal selection returns to the attached document and locates the capture; missing or ambiguous text, mismatched elements, and changed page routes fail closed. A closed file must be reopened first.
 - **Pi delivery:** Explain and Review request answers in Pi without file edits and allow an optional instruction; Edit requires an instruction. A remembered connected target or the only connected session may be selected; otherwise the user chooses. The first send attempt freezes target, intent, instruction, and context; Retry delivery reuses the same message ID and payload. Received, queued, and accepted describe delivery only. Answers appear in Pi; Show in Rex is available when the target has a Rex block. Discard request or New request explicitly clears the retained request. Quick requests remain in memory. Add to review saves notes locally; the Notes toolbar action opens a compact, non-modal review list in the existing composer position. Its scrolling list has selection, Edit note, Reveal selection, and Remove controls, with the Pi destination and send controls outside the scroller. Selected notes form one bounded batch with an explicit target and exact payload disclosure. One immutable delivery record survives restart until explicitly removed; delivery is not completion.
 - **Dialogs, recovery, updates:** native modal focus containment and focus return; close/quit use live draft approvals and block competing actions while validating. App exit and update/restart also protect unsent requests and unsaved note edits with Save to Notes / Discard / Cancel. Cancel receives focus after the dialog opens. Saved, unchanged notes need no prompt. Local save must finish before exit; errors leave the app open. Attempted delivery is never converted into a new unsent note. Recovery is off by default, discloses privacy/retention limits, requires native approval to restore, excludes discarded drafts, and waits for writes before off-and-delete. Updates use the quiet changes banner, explicit Install & Restart, safe draft approvals, and a modal progress state; failure returns to the draft. Background checks stay quiet.
 - **Preview continuity:** HTML/MDX refresh retains a visible anchor and viewport offset, with pixel fallback and up to eight scrolled containers. Memory holds at most 32 document positions, never disk persistence. Restoration yields to user input; the opt-in development-server bridge never restores a different route. MDX appearance updates without remount; HTML/server page styles stay their own.

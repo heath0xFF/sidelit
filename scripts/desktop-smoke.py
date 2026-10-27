@@ -63,7 +63,7 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     before = file.read_bytes()
     modified = file.stat().st_mtime_ns
     started = time.monotonic()
-    timing = launch(file)
+    timing = launch()
     wait(lambda: request('/status')['ready'], 'WebDriver')
     time.sleep(.5)
     session = request('/session', {'capabilities': {}})['sessionId']
@@ -97,6 +97,20 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
         data = request(f'/session/{session}/screenshot')
         (OUT / name).write_bytes(base64.b64decode(data))
 
+    def set_theme(value):
+        js('const select=document.querySelector("select[aria-label=Theme]");select.value=arguments[0];select.dispatchEvent(new Event("change",{bubbles:true}))', value)
+        expected = js('return matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"') if value == 'system' else value
+        wait(lambda: js('return document.documentElement.dataset.theme') == expected, 'theme ' + value)
+
+    wait(lambda: js('const img=document.querySelector(".empty-mark img");return img?.complete && img.naturalWidth > 0'), 'welcome icon')
+    assert js('const source=document.querySelector(".empty-mark source"),img=document.querySelector(".empty-mark img");return img.currentSrc===new URL(matchMedia(source.media).matches?source.srcset:img.src,location.href).href'), 'welcome icon follows system appearance'
+    for media, theme in [('not all', 'light'), ('all', 'dark')]:
+        set_theme(theme)
+        js('document.querySelector(".empty-mark source").media=arguments[0]', media)
+        wait(lambda: js('const source=document.querySelector(".empty-mark source"),img=document.querySelector(".empty-mark img");return img.complete && img.naturalWidth > 0 && img.currentSrc===new URL(arguments[0]==="dark"?source.srcset:img.src,location.href).href', theme), 'welcome ' + theme + ' icon')
+        screenshot('welcome-icon-' + theme + '.png')
+    js('document.querySelector(".empty-mark source").media="(prefers-color-scheme: dark)"')
+    launch(file)
     wait(lambda: js('return document.querySelector(".ProseMirror h1")?.textContent') == 'Original', 'rendered editor')
     ready_seconds = round(time.monotonic() - started, 3)
     # A tiling window manager can otherwise undo the test viewport sizes.
@@ -126,11 +140,6 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     check_column()
     js('document.querySelector(".rich-editor").style.removeProperty("width")')
     assert not js('return !!document.querySelector(".dirty-dot")')
-    def set_theme(value):
-        js('const select=document.querySelector("select[aria-label=Theme]");select.value=arguments[0];select.dispatchEvent(new Event("change",{bubbles:true}))', value)
-        expected = js('return matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"') if value == 'system' else value
-        wait(lambda: js('return document.documentElement.dataset.theme') == expected, 'theme ' + value)
-
     def set_size(size):
         js('document.querySelector(".font-size-value").click()')
         wait(lambda: js('return document.querySelector(".font-size-value").textContent') == '16px', 'reset font size')

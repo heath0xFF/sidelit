@@ -142,7 +142,13 @@ jobs:
 
           **This release is ad-hoc signed, not Apple-notarized.** If macOS blocks the first launch, use **System Settings → Privacy & Security → Open Anyway** for Sidelit, only if you trust this download. Do not disable Gatekeeper.
 
-          **New in 0.4.1: The Fold app icons.**
+          **New in 0.4.2: warm accents and a matching welcome icon.**
+
+          - Amber actions in Dark and burnt-orange actions in Light match The Fold icon. Charcoal surfaces and syntax colors are unchanged.
+          - Links, focus rings, editor selections, diagrams, and preview highlights use the new accents. Button labels, selected text, and errors have tested contrast in both themes.
+          - The welcome screen now uses The Fold icon and follows system appearance automatically.
+
+          **Included from 0.4.1: The Fold app icons.**
 
           - New light and dark icons replace the previous app icon.
           - The running Dock icon follows system appearance at startup and on changes, independently of the editor theme. Finder keeps the static light icon.
@@ -158,7 +164,7 @@ jobs:
 
           **Pi users:** after updating, run `sidelit setup --pi --skill`, then `/reload` in each intended Pi session. Batch delivery needs the updated extension; older extensions still support quick requests. Setup preserves custom installations.
 
-          This patch passed 140 frontend/bridge tests, 28 Rust tests, and the packaged macOS editor smoke test. Both ICNS variants load in AppKit, and installed assets match the supplied icon pack. Live system Light/Dark switching still needs a manual check. VoiceOver, Intel runtime, and older macOS versions remain unverified.
+          This patch passed 144 frontend/bridge tests, 28 Rust tests, and packaged macOS editor and feedback smoke tests. Light/dark welcome icons, diagram previews, and feedback highlights were visually checked. Live system Light/Dark switching still needs a manual check. VoiceOver, Intel runtime, and older macOS versions remain unverified.
 
           Saved notes use private OS permissions, not encryption. Force-quit or a crash can still lose an unsaved quick draft. Receipt and acceptance do not mean the work is complete; answers stay in Pi. Standalone MDX imports require your development server; server inspection requires the opt-in preview bridge. Explain/Review express intent to Pi, not an edit-permission boundary. See the README for setup and security details.
 

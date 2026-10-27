@@ -1,5 +1,31 @@
 # Verification
 
+## v0.4.2 accents and welcome icon
+
+The welcome screen uses the supplied light/dark SVG icons. Warm amber replaces
+violet in Dark; burnt orange replaces it in Light. Shared tokens update actions,
+focus, selections, Crepe, and Monaco without changing editor lifecycle. Isolated
+Markdown/MDX links, selections, diagrams, and preview-bridge highlights use the
+same warm colors. Dark error text is lighter to meet contrast requirements.
+
+- TypeScript, all 144 frontend/bridge tests, and 28 Rust tests passed. Palette checks cover
+  normal/hover action labels, selected text, links, errors, and syntax at 4.5:1,
+  plus action/focus colors against shell surfaces at 3:1.
+- Packaged desktop and feedback smoke tests passed after closing the prior
+  isolated test app. The normal app was rebuilt without test instrumentation.
+  These package checks ran before the version bump; the release workflow
+  rebuilds and verifies v0.4.2.
+- Reviewed light/dark welcome captures, wide/dark and narrow/light diagram
+  captures, and attached-selection/narrow-feedback captures. Layout, neutral
+  surfaces, and syntax colors are unchanged. The design scan reported only
+  existing font-size and local-color advisories outside this palette change.
+- The welcome icon test checks the current system media choice, then forces
+  each picture source to verify both assets. It does not change OS appearance.
+
+VoiceOver, live OS appearance switching, and arbitrary development-server page
+colors were not manually checked. The preview bridge uses an amber inner edge
+and a dark outer edge so its highlights remain visible on light or dark pages.
+
 ## v0.4.1 icon checks
 
 The Fold icon pack is installed without changes to its artwork. The running
