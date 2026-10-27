@@ -191,6 +191,15 @@ Ordinary chrome, tabs, menus, and the feedback panel use tonal layering and thin
 
 No decorative transitions are defined. Scrolling is immediate; reduced-motion styling explicitly preserves automatic scroll behavior.
 
+## App icon
+
+The user-supplied “The Fold” icon pack replaces the previous app icon. The light
+and dark artwork is retained without changes in `src-tauri/icons/`; editable SVG
+sources are in `scripts/icon.svg` and `scripts/icon-dark.svg`. The running macOS
+Dock icon follows system appearance at startup and on changes, independently of
+the editor preference. Finder uses the static light bundle icon. See
+`src-tauri/icons/README.md` for provenance and native checks.
+
 ## Shapes
 
 Controls use gentle corners, panes and menus use larger corners, and tabs plus the sidebar toggle use capsule-like corners. Close buttons and unsaved dots are circular. Dialog and Quick Open field radii are deliberate existing variants recorded above. Outline SVG icons are generally 16px with a 1.6 stroke on a 24-unit viewBox; tab close icons are 12px. Icons retain their width beside truncated filenames.

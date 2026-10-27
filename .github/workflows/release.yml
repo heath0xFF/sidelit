@@ -142,7 +142,13 @@ jobs:
 
           **This release is ad-hoc signed, not Apple-notarized.** If macOS blocks the first launch, use **System Settings → Privacy & Security → Open Anyway** for Sidelit, only if you trust this download. Do not disable Gatekeeper.
 
-          **New in 0.4.0: saved review notes and safer request handling.**
+          **New in 0.4.1: The Fold app icons.**
+
+          - New light and dark icons replace the previous app icon.
+          - The running Dock icon follows system appearance at startup and on changes, independently of the editor theme. Finder keeps the static light icon.
+          - The app does not rewrite its signed bundle when appearance changes.
+
+          **Included from 0.4.0: saved review notes and safer request handling.**
 
           - **Collect while reading.** Choose **Add to review** to keep up to 20 notes locally. Open **Notes** to edit, remove, or reveal a capture, then select notes from one project and send them as one Pi message. Each note keeps its own Explain, Review, or Edit intent.
           - **Review before sending.** Choose the Pi session explicitly and inspect the exact batch payload. Changed or restored captures need acknowledgment. Retries keep the same ID, destination, and payload, including after restart. Nothing sends automatically.
@@ -152,7 +158,7 @@ jobs:
 
           **Pi users:** after updating, run `sidelit setup --pi --skill`, then `/reload` in each intended Pi session. Batch delivery needs the updated extension; older extensions still support quick requests. Setup preserves custom installations.
 
-          Verified with 140 frontend/bridge tests, 27 Rust tests, packaged macOS editor and review tests, the real Pi runtime with an offline fixture model, and an isolated signed install/restart test. Tests cover dropped receipts, identical retries after restart, local storage failures, quit cancellation, unchanged document bytes, and narrow/light and wide/dark layouts. VoiceOver, Intel runtime, and older macOS versions still need manual checks.
+          This patch passed 140 frontend/bridge tests, 28 Rust tests, and the packaged macOS editor smoke test. Both ICNS variants load in AppKit, and installed assets match the supplied icon pack. Live system Light/Dark switching still needs a manual check. VoiceOver, Intel runtime, and older macOS versions remain unverified.
 
           Saved notes use private OS permissions, not encryption. Force-quit or a crash can still lose an unsaved quick draft. Receipt and acceptance do not mean the work is complete; answers stay in Pi. Standalone MDX imports require your development server; server inspection requires the opt-in preview bridge. Explain/Review express intent to Pi, not an edit-permission boundary. See the README for setup and security details.
 

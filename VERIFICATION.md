@@ -1,5 +1,22 @@
 # Verification
 
+## v0.4.1 icon checks
+
+The Fold icon pack is installed without changes to its artwork. The running
+macOS Dock icon follows native appearance events; the static bundle icon is
+light. Editor theme preferences and document handling are unchanged.
+
+TypeScript, 140 frontend/bridge tests, 28 Rust tests, Cargo check/format, and
+the packaged desktop smoke test passed. The icon test loads both ICNS variants
+in AppKit and checks light/dark selection. All installed icon assets match the
+supplied ZIP, and the test bundle contains the new light icon. The ordinary app
+was also built without test instrumentation. These package checks ran before
+the version bump; the release workflow rebuilds and verifies v0.4.1.
+
+Live system appearance switching, non-macOS icons, Intel runtime, and older
+macOS versions still need manual checks. The signed updater smoke test was not
+repeated for this icon-only patch. Finder retains the static light icon.
+
 ## v0.4.0 release checks
 
 Saved review notes, batch delivery, request visibility, quit protection, and

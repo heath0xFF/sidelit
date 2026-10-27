@@ -1,6 +1,7 @@
 mod agents;
 mod cli;
 mod files;
+mod icons;
 mod integrations;
 mod menu;
 mod preview;
@@ -218,6 +219,18 @@ fn main() {
         .build(tauri::generate_context!())
         .expect("build Sidelit");
     app.run(|app, event| match event {
+        // Ready runs after Tauri installs its development icon.
+        tauri::RunEvent::Ready
+        | tauri::RunEvent::WindowEvent {
+            event: tauri::WindowEvent::ThemeChanged(_),
+            ..
+        } => {
+            if let Some(window) = app.get_webview_window("main") {
+                if let Err(error) = icons::sync(&window) {
+                    eprintln!("sidelit: could not update app icon: {error}");
+                }
+            }
+        }
         tauri::RunEvent::WindowEvent {
             event: tauri::WindowEvent::CloseRequested { api, .. },
             ..
