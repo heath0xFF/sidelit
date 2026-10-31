@@ -82,6 +82,10 @@ Doctor reports the invoked build, known running builds, installation versus live
 
 Select text and choose Explain, Review or Edit, choose the Pi target, and press **Send to Pi** (Cmd/Ctrl+Enter). General feedback works without a selection. If Pi never starts a request, for example because its login expired, Sidelit reports that after about 10 seconds and offers a retry of the same message. **Queued** or **Received** means submitted as a native follow-up; **Pi accepted the request** appears only after Pi emits its user-message event. It does not mean the work is finished. Retry preserves the message ID and payload so an uncertain delivery cannot inject the same instruction twice.
 
+If the document has unsaved changes, **Include my unsaved changes** sends up to 12 KiB of them with the request, so Pi can see them. It is on by default and you can turn it off. They are not on disk, so an edit from Pi can conflict with your draft; Sidelit keeps the draft and offers Compare.
+
+The request shows when Pi finishes its turn, and the toolbar button changes to **Pi finished**. That does not mean the request succeeded. If open documents changed, **Show changes** takes you to them. Notes batches show this while **Notes** is open.
+
 End-to-end example: run `cd ~/code/site && pi` in Rex, open `src/pages/index.mdx` in Sidelit, press `Cmd/Ctrl+Shift+I`, click the navigation element, enter “Make this navigation more compact,” choose `Pi · site`, and press **Send to Pi**. After Pi edits the file, Sidelit refreshes the clean preview automatically.
 
 Rex discovery is read-only. When Sidelit is launched from an environment with Rex available, it uses Rex's documented session inspection and terminal process APIs to find Pi blocks, their working directories, and project association. A Rex-only target is shown as unavailable until the Pi extension is installed. Sidelit never writes into an active terminal as a delivery mechanism.
@@ -120,6 +124,7 @@ Add the export to your shell profile. If a `sidelit` command already exists, ins
 sidelit path/to/file.md
 sidelit path/to/folder
 sidelit --source 'notes/研究 notes.md'
+sidelit --find 'some text' notes/plan.md
 sidelit --help
 sidelit --version
 ```
@@ -195,7 +200,7 @@ Each open file has one canonical text buffer, a disk snapshot and SHA-256 hash, 
 - A real rich edit can normalize supported syntax: list markers, whitespace, tables, or fences. **Arbitrary Markdown round trips are not byte-perfect.** Use Source for exact syntax control. Undoing back to the loaded rendered document restores its original Markdown bytes.
 - YAML (`---`) and TOML (`+++`) frontmatter stays byte-for-byte unchanged while you edit the rendered body. Use Source to edit metadata. Math, raw HTML, comments, footnotes, and `:::` blocks stay byte-for-byte unchanged when you edit around them. Raw HTML and math show as plain text, without running or being laid out, and comments stay hidden. Reference links become inline links on the first edit, with the same targets. Code fences with metadata, unclosed frontmatter, byte-order marks, non-web link schemes, and documents over 256 KiB use Source with an explanation. Source stays selected until you explicitly change mode.
 - UTF-8 and uniform LF/CRLF are supported. Rich edits preserve uniform CRLF. Mixed line endings can normalize after an edit.
-- A clean buffer refreshes after an external change. **Review changes** shows its previous disk version beside the current text, both read-only. Only the latest previous version is kept in memory.
+- A clean buffer refreshes after an external change, and the changed passages are marked. They stay marked across later changes until you choose **Mark reviewed**. See [Reviewing changes](#reviewing-changes).
 - A dirty buffer keeps its draft and shows **Compare**, **Reload from Disk**, and **Save Copy**. Reload asks before discarding a draft.
 - In Compare, the disk pane is read-only and the draft pane is editable. Use a change arrow to take that part of the disk text, or edit the draft directly. Keyboard users can focus an arrow and press Enter or Space. **Save Merged** checks the exact reviewed disk version before writing. A newer external change stops the save; use **Refresh disk pane** to review it first.
 - Save Copy requires a **new** file name. It opens the saved draft in a new tab, then reloads the original from current disk. A failed or cancelled copy does not resolve the conflict. If the original is unavailable or gains newer edits while copying, those edits remain in memory.
@@ -252,3 +257,29 @@ Pi uses `/tmp/sidelit-pi-<uid>/` (0700 directory, 0600 socket/registration). No 
 - Development-server inspection requires a small page-side bridge; Sidelit does not inject JavaScript into arbitrary remote applications. The bridge is intentionally limited to selection/element context, shortcuts and bounded scroll restoration, and does not expose native commands. Remote page scripts and dependencies remain the responsibility of the development server.
 - Markdown's existing raster-only image policy is unchanged. Static HTML/MDX support SVG as inert image data, not embedded SVG documents with privileges. Remote static-preview assets are blocked. Workspace restoration requires recovery to be enabled. Windows bridge support is not implemented (Unix sockets/permissions).
 - macOS signing/notarization, Linux packaging, screen-reader use, narrow-window layouts, and native dialog edge cases need more coverage.
+
+## Reviewing changes
+
+When a file changes on disk, such as after Pi edits it, a bar above the document counts the passages changed since you last reviewed it.
+
+- In the rich editor, changed blocks get a bar in the margin, changed words are highlighted, and removed passages appear struck through. Source and MDX mark whole lines. An HTML page has no marks, so **Next** switches it to Source.
+- **Previous** and **Next** (⇧F8 and F8) step through the changes.
+- **Revert this** puts one passage back in your draft and **Undo revert** takes that back. Nothing is written until you save.
+- **Compare** shows both versions side by side. **Mark reviewed** clears the marks; it does not change the file.
+- Your own saved edits stay marked too, until you mark them reviewed. A first rich edit can normalize Markdown such as `-` bullets, and that shows up as a change. Marks last until the tab closes or the app quits.
+
+## Finding your way around
+
+The sidebar has three views:
+
+- **Files** is the folder tree. If the folder is in a Git repository, documents show `M` for changed or `A` for new since the last commit, and folders holding changes get a dot.
+- **Outline** lists the current document's headings. Choose one to go there.
+- **Changed** lists documents changed since the last commit. Opening one from here marks what differs from that commit. Deleted documents are not listed.
+
+Links open other documents in tabs and follow heading anchors, so `other.md#setup` and `#setup` both work, using GitHub's anchor rules.
+
+An agent or script can point you at a passage with `sidelit --find "some text" path/to/file.md`. It opens the file and marks the first match, ignoring case if there is no exact match. A match must sit within one paragraph or block. If nothing matches, Sidelit says so.
+
+## Math
+
+While reading Markdown, `$E=mc^2$`, `$$x+y$$`, and paragraphs that are only `$$ … $$` are drawn as math. Edit shows the source again, and the file never changes. Money and shell variables such as `$5` and `$HOME` stay text, because an opening `$` cannot be followed by a space or digit and a closing `$` cannot be preceded by a space or followed by a letter or digit. Markdown treats a backslash before punctuation as an escape, so `\{` draws as `{`; `\frac` and other letter commands are unaffected.

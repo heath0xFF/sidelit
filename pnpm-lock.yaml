@@ -39,6 +39,12 @@ importers:
       '@tauri-apps/api':
         specifier: 2.12.3
         version: 2.12.3
+      dompurify:
+        specifier: 3.4.17
+        version: 3.4.17
+      katex:
+        specifier: 0.18.2
+        version: 0.18.2
       monaco-editor:
         specifier: 0.57.0
         version: 0.57.0

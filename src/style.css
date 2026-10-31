@@ -1243,3 +1243,64 @@ textarea {
   .mdx-split { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); }
   .mdx-split > .preview-shell { border-left: 0; border-top: 1px solid var(--line); }
 }
+
+/* Passages that changed since the person last reviewed the document. */
+.rich-editor .ProseMirror .sidelit-change { position: relative; }
+.rich-editor .ProseMirror .sidelit-change::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 -12px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--line);
+  pointer-events: none;
+}
+.rich-editor .ProseMirror .sidelit-change.active::before { background: var(--accent); }
+.rich-editor .sidelit-change-text { background: var(--selected); border-radius: 2px; }
+.rich-editor .sidelit-removed {
+  margin: var(--space-2) 0;
+  padding-left: var(--space-3);
+  border-left: 3px solid var(--error);
+  color: var(--muted);
+  font-size: 0.875em;
+  text-decoration: line-through;
+  user-select: none;
+}
+.rich-editor .sidelit-removed.active { background: var(--hover); }
+.rich-editor .sidelit-removed::before { content: attr(data-removed); }
+.source-change { background: var(--hover); }
+.source-change.active { background: var(--selected); }
+.source-change-bar { background: var(--accent); width: 3px !important; margin-left: 3px; }
+.source-change-removed { border-top: 2px solid var(--error); width: 12px !important; margin-left: 3px; }
+.changes-bar { flex-wrap: wrap; }
+.changes-summary { flex: 1 1 240px; min-width: 0; }
+.changes-summary strong { font-weight: 600; }
+.changes-current { overflow-wrap: anywhere; color: var(--muted); }
+
+/* Math is drawn over the source text while reading; the document text never changes. */
+.rich-editor .math-source { display: none; }
+.rich-editor .math-drawn { user-select: none; }
+.rich-editor .math-display { display: block; overflow-x: auto; }
+
+.sidebar-views { display: flex; gap: 2px; padding: 0 var(--space-2) var(--space-2); }
+.sidebar-views button {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 26px;
+  padding: 0 var(--space-1);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.sidebar-views button:hover { background: var(--hover); color: var(--text); }
+.sidebar-views button[aria-pressed="true"] { background: var(--active); color: var(--text); }
+.tree-row .tree-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.git-mark { flex: none; margin-left: var(--space-1); color: var(--accent); font: 600 11px/1 var(--font-mono); }
+.git-mark.added { color: var(--syntax-string); }
+.git-mark.folder { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.outline-list .tree-row > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.feedback-draft { display: flex; gap: var(--space-2); align-items: flex-start; }
+.feedback-draft input { flex: none; margin-top: 3px; }

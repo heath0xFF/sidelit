@@ -164,7 +164,7 @@ describe("canonical buffers", () => {
   });
 });
 describe("review and recovery", () => {
-  it("retains only the previous external disk version, not own saves", async () => {
+  it("keeps the last reviewed version across external changes and own saves", async () => {
     const { store, disk } = setup("first");
     disk("second");
     await store.refresh("/a.md");
@@ -173,7 +173,22 @@ describe("review and recovery", () => {
     expect(store.get("/a.md")!.review?.text).toBe("first");
     disk("third");
     await store.refresh("/a.md");
-    expect(store.get("/a.md")!.review?.text).toBe("second");
+    expect(store.get("/a.md")!.review?.text).toBe("first");
+    expect(store.get("/a.md")!.reviewFrom).toBe("disk");
+    store.update("/a.md", { review: undefined });
+    disk("fourth");
+    await store.refresh("/a.md");
+    expect(store.get("/a.md")!.review?.text).toBe("third");
+  });
+  it("compares with a commit only when nothing is already under review", async () => {
+    const { store, disk } = setup("first");
+    store.compareWithCommit("/a.md", { text: "first", hash: "same" });
+    expect(store.get("/a.md")!.review).toBeUndefined();
+    store.compareWithCommit("/a.md", { text: "older", hash: "h" });
+    expect(store.get("/a.md")!).toMatchObject({ review: { text: "older" }, reviewFrom: "commit" });
+    disk("second");
+    await store.refresh("/a.md");
+    expect(store.get("/a.md")!).toMatchObject({ review: { text: "older" }, reviewFrom: "commit" });
   });
   it("saves a merged draft only against the explicitly reviewed version", async () => {
     const { store, disk } = setup("base");

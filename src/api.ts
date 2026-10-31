@@ -9,6 +9,16 @@ export interface OpenRequest {
   path: string;
   directory: boolean;
   source: boolean;
+  find?: string | null;
+  anchor?: string | null;
+}
+export interface GitFile {
+  path: string;
+  status: "modified" | "added";
+}
+export interface GitStatus {
+  files: GitFile[];
+  incomplete: boolean;
 }
 export interface Opened {
   path: string;
@@ -54,7 +64,7 @@ export interface AgentTarget {
 }
 export interface DeliveryAck {
   id: string;
-  status: "received" | "accepted" | "duplicate" | "failed";
+  status: "received" | "accepted" | "duplicate" | "settled" | "failed";
   delivery: "submitted" | "queued" | "consumed" | "none";
 }
 export interface PreviewAsset {
@@ -92,6 +102,8 @@ export const api = {
     invoke<PreviewAsset>("preview_asset", { document, reference }),
   publishPreview: (id: string, html: string) => invoke<string>('publish_preview', { id, html }),
   releasePreview: (id: string) => invoke<void>('release_preview', { id }),
+  gitStatus: (path: string) => invoke<GitStatus>("git_status", { path }),
+  gitCommitted: (path: string) => invoke<Snapshot | null>("git_committed", { path }),
   search: (path: string, query: string) => invoke<SearchResults>("search_documents", { path, query }),
   agentTargets: (projectRoot?: string) =>
     invoke<AgentTarget[]>("agent_targets", { projectRoot: projectRoot ?? null }),

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { Crepe } from '@milkdown/crepe';
 import { editorViewCtx, serializerCtx } from '@milkdown/kit/core';
 import { sourceReason } from '../src/fidelity';
+import { blocksFit, computeChanges } from '../src/changes';
 
 // Whether documents may enter the rich editor rests on what Crepe writes back, so test the real editor.
 async function roundTrip(markdown: string, edit = false) {
@@ -19,10 +20,30 @@ async function roundTrip(markdown: string, edit = false) {
 }
 
 describe('Crepe round trip', () => {
+  // The change marks assume one rich editor block for each block computeChanges counts.
+  it.each([
+    ['ordinary', '# T\n\nText.\n\n- a\n- b\n\n> q\n\n```js\nx\n```\n\n---\n\n| a |\n| - |\n| b |\n'],
+    ['raw HTML and comments', 'A\n\n<details>\n\nB\n\n</details>\n\n<!-- c -->\n\nD <!-- e --> f\n'],
+    ['footnotes', 'Claim[^1]\n\n[^1]: Note\n\nAfter\n'],
+    ['reference definitions', 'See [a][d].\n\n[d]: https://a.b\n\nAfter\n'],
+    ['Mermaid and math', '```mermaid\ngraph LR\n```\n\n$$\nx\n$$\n\nEnd\n'],
+    ['two lists', '- a\n\n* b\n'],
+  ])('matches computed blocks to editor blocks: %s', async (_name, markdown) => {
+    const root = document.createElement('div'); document.body.append(root);
+    const crepe = new Crepe({ root, defaultValue: markdown, features: { [Crepe.Feature.Latex]: false, [Crepe.Feature.ImageBlock]: false } });
+    await crepe.create();
+    try {
+      const fits = crepe.editor.action(ctx => blocksFit(computeChanges(markdown, markdown, 'markdown').richCount, ctx.get(editorViewCtx).state.doc));
+      expect(fits).toBe(true);
+    } finally { await crepe.destroy(); root.remove(); }
+  });
   const opening = 'Opening paragraph.\n\n';
   it.each([
     ['dollars', 'Budget is $500 and $HOME, from $5 to $10.\n'],
     ['math', 'Energy $$E=mc^2$$ here.\n'],
+    ['inline math', 'Energy $E=mc^2$ and $\\alpha$ here.\n'],
+    ['display math', '$$\nE=mc^2\n$$\n'],
+    ['lone dollar', 'Price $5 only.\n'],
     ['line break HTML', 'one<br>two\n'],
     ['block HTML', '<details><summary>More</summary>\n\nHidden **text**\n\n</details>\n'],
     ['HTML attributes', '<aside data-x="1">Raw</aside>\n'],

@@ -81,6 +81,46 @@
   const watchAttachments = () => new MutationObserver(scheduleAttachment).observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true });
   if (document.body) watchAttachments(); else document.addEventListener('DOMContentLoaded', watchAttachments, { once: true });
   addEventListener('resize', scheduleAttachment);
+  const firstText = wanted => {
+    const needle = wanted.trim().toLowerCase();
+    if (!needle || needle.length > 300) return;
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT), nodes = [];
+    let text = '', node;
+    while ((node = walker.nextNode()) && nodes.length < 20000 && text.length < 2000000) {
+      if (node.parentElement?.closest('script,style,[data-sidelit-overlay]')) continue;
+      nodes.push(node); text += node.textContent;
+    }
+    const start = text.toLowerCase().indexOf(needle);
+    if (start < 0) return;
+    const range = document.createRange(); let offset = 0, started = false;
+    for (const item of nodes) {
+      const end = offset + item.length;
+      if (!started && start < end) { range.setStart(item, start - offset); started = true; }
+      if (started && start + needle.length <= end) { range.setEnd(item, start + needle.length - offset); return range; }
+      offset = end;
+    }
+  };
+  // An MDX page can still be mounting when the request arrives, so keep looking briefly.
+  const pointTo = (request, deadline) => {
+    const target = typeof request.find === 'string' ? firstText(request.find) : document.querySelectorAll('h1,h2,h3,h4,h5,h6')[request.heading];
+    if (!target) {
+      if (Date.now() < deadline) setTimeout(() => pointTo(request, deadline), 100);
+      else send('find-missed');
+      return;
+    }
+    send('find-found');
+    (target instanceof Element ? target : target.startContainer.parentElement)?.scrollIntoView({ block: typeof request.find === 'string' ? 'center' : 'start' });
+    if (target instanceof Element) return;
+    const mark = document.createElement('div'); mark.dataset.sidelitOverlay = '';
+    for (const rect of Array.from(target.getClientRects()).slice(0, 100)) {
+      const part = document.createElement('div');
+      part.style.cssText = `position:fixed;pointer-events:none;z-index:2147483646;background:rgba(255,196,119,.3);border:1px solid #ffc477;left:${rect.left}px;top:${rect.top}px;width:${rect.width}px;height:${rect.height}px`;
+      mark.append(part);
+    }
+    document.documentElement.append(mark);
+    const clear = () => { mark.remove(); removeEventListener('scroll', clear, true); removeEventListener('pointerdown', clear, true); };
+    setTimeout(() => { addEventListener('scroll', clear, true); addEventListener('pointerdown', clear, true); }, 300);
+  };
   const scrollers = new Set();
   let scrollFrame = 0, restoreTimer = 0, restoring = false;
   const query = value => { try { return document.querySelector(value); } catch { return null; } };
@@ -171,6 +211,7 @@
     if (typeof event.data.token !== 'string' || event.data.token.length > 80) return;
     if (event.data.enabled === false) { token = ''; inspect = false; selected = undefined; attachment = undefined; drawAttachment(); clear(); stopRestoring(); return; }
     if (event.data.reveal === true && token === event.data.token) { drawAttachment(true); return; }
+    if (token === event.data.token && (typeof event.data.find === 'string' || Number.isInteger(event.data.heading))) { stopRestoring(); pointTo(event.data, Date.now() + 1500); return; }
     const firstConnection = !token;
     token = event.data.token; hostOrigin = event.origin; inspect = !!event.data.inspect;
     if (document.getElementById('sidelit-mdx') && event.data.appearance) {

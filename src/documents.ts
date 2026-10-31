@@ -10,7 +10,9 @@ export interface Document {
   revision: number;
   mode: Mode;
   reason?: string;
+  // The version changes are marked against, kept until the person marks them reviewed.
   review?: Snapshot;
+  reviewFrom?: "disk" | "commit";
   pending?: { snapshot: Snapshot | null; error: string | null };
   saving: boolean;
   notice: string;
@@ -82,6 +84,11 @@ export class Documents {
     if (!doc || doc.text === text) return;
     this.update(path, { text, revision: doc.revision + 1, notice: "", reason: undefined });
   }
+  compareWithCommit(path: string, committed: Snapshot) {
+    const doc = this.get(path);
+    if (doc && !doc.review && committed.text !== doc.text)
+      this.update(path, { review: committed, reviewFrom: "commit" });
+  }
   remove(path: string) {
     this.bump(path);
     this.docs = this.docs.filter((d) => d.path !== path);
@@ -113,7 +120,9 @@ export class Documents {
           disk,
           text: disk.text,
           ...rendering(path, disk.text, doc.mode),
-          review: !discard && disk.hash !== doc.disk.hash ? doc.disk : doc.review,
+          ...(!discard && disk.hash !== doc.disk.hash
+            ? { review: doc.review ?? doc.disk, reviewFrom: doc.review ? doc.reviewFrom : "disk" as const }
+            : {}),
           pending: undefined,
           revision: doc.revision + (doc.text === disk.text ? 0 : 1),
           notice: disk.hash !== doc.disk.hash ? "Updated from disk" : "",

@@ -5,9 +5,10 @@ import { lineForText, parseSelection, parseRect, type SelectionContext } from '.
 import { localServerUrl } from './preview-security';
 import { parsePreviewPosition, previewPosition, rememberPreviewPosition } from './preview-position';
 import runtime from '../public/preview-runtime/runtime.js?raw';
+import { claimJump, type Jump } from './jump';
 
-export default function Preview({ path, source = '', format, url, inspect, onText, onElement, onError, refresh = 0, onDismiss, onShortcut, dark = true, fontSize = 16, attachment, reveal = 0 }: {
-  path?: string; source?: string; format: 'html' | 'mdx' | 'url'; url?: string;
+export default function Preview({ path, source = '', format, url, inspect, onText, onElement, onError, refresh = 0, onDismiss, onShortcut, dark = true, fontSize = 16, jump, onJumpMissed, attachment, reveal = 0 }: {
+  path?: string; source?: string; format: 'html' | 'mdx' | 'url'; url?: string; jump?: Jump; onJumpMissed?: (jump: Jump) => void;
   inspect: boolean; onText: (value: SelectionContext | null) => void; onElement: (value: SelectionContext) => void;
   onError: (error: unknown) => void; refresh?: number; onDismiss?: () => void; onShortcut?: (key: string) => void;
   dark?: boolean; fontSize?: number;
@@ -28,6 +29,8 @@ export default function Preview({ path, source = '', format, url, inspect, onTex
   const compiled = useRef<string | undefined>(undefined);
   const callbacks = useRef({ onText, onElement, onError, onDismiss, onShortcut });
   callbacks.current = { onText, onElement, onError, onDismiss, onShortcut };
+  const jumpMissed = useRef(onJumpMissed);
+  jumpMissed.current = onJumpMissed;
   const remote = format === 'url';
   const positionKey = path || url || '';
   const allowScripts = !!path && trustedPath === path;
@@ -65,6 +68,14 @@ export default function Preview({ path, source = '', format, url, inspect, onTex
       frame.current?.contentWindow?.postMessage({ source: 'sidelit-host', token: id, reveal: true }, remote && url ? new URL(url).origin : '*');
     }
   }, [reveal, ready, attachment, remote, bridgeEnabled, url, id]);
+  // Kept until a frame answers: a file watcher can replace the frame while a request is on its way.
+  const pendingJump = useRef<Jump | undefined>(undefined);
+  useEffect(() => {
+    if (!remote && claimJump(jump, 'preview')) pendingJump.current = jump;
+    const pending = pendingJump.current;
+    if (!ready || !pending) return;
+    frame.current?.contentWindow?.postMessage({ source: 'sidelit-host', token: id, ...(pending.heading ? { heading: pending.heading.index } : { find: pending.text }) }, '*');
+  }, [jump?.nonce, ready, remote, id]);
   useEffect(() => {
     const receive = (event: MessageEvent) => {
       if (event.source !== frame.current?.contentWindow || event.data?.source !== 'sidelit-preview' || event.data.token !== id) return;
@@ -76,6 +87,12 @@ export default function Preview({ path, source = '', format, url, inspect, onTex
         return;
       }
       if (event.data.type === 'ready') { setReady(true); return; }
+      if (event.data.type === 'find-found') { pendingJump.current = undefined; return; }
+      if (event.data.type === 'find-missed') {
+        const missed = pendingJump.current; pendingJump.current = undefined;
+        if (missed) jumpMissed.current?.(missed);
+        return;
+      }
       if (event.data.type === 'clear-selection') { callbacks.current.onText(null); return; }
       if (event.data.type === 'dismiss') { callbacks.current.onDismiss?.(); return; }
       if (event.data.type === 'shortcut' && ['i', 'f', 'r', 'e'].includes(event.data.context)) { callbacks.current.onShortcut?.(event.data.context); return; }

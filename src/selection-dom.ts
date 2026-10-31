@@ -38,9 +38,35 @@ export function locateSelection(root: Element, context: SelectionContext): Range
   return null;
 }
 
+// An agent's pointer, not captured identity: the first match is the useful answer here.
+export function findText(root: Element, query: string): Range | null {
+  const needle = query.trim();
+  if (!needle) return null;
+  const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const nodes: Text[] = []; let text = '', node: Node | null;
+  while ((node = walker.nextNode()) && nodes.length < 20000 && text.length < 2000000) {
+    if (node.parentElement?.closest('[data-sidelit-overlay]')) continue;
+    nodes.push(node as Text); text += node.textContent;
+  }
+  let start = text.indexOf(needle);
+  if (start < 0) start = text.toLowerCase().indexOf(needle.toLowerCase());
+  if (start < 0) return null;
+  const range = root.ownerDocument.createRange(); let offset = 0, started = false;
+  for (const item of nodes) {
+    const end = offset + item.length;
+    if (!started && start < end) { range.setStart(item, start - offset); started = true; }
+    if (started && start + needle.length <= end) { range.setEnd(item, start + needle.length - offset); return range; }
+    offset = end;
+  }
+  return null;
+}
+
 export function markSelection(root: Element, context: SelectionContext, reveal = false) {
   const target = locateSelection(root, context);
-  if (!target) return () => {};
+  return target ? markTarget(root, target, reveal) : () => {};
+}
+
+export function markTarget(root: Element, target: Range | Element, reveal = false) {
   const element = target instanceof Element ? target : target.startContainer.parentElement;
   if (reveal) element?.scrollIntoView({ block: 'center' });
   const overlay = document.createElement('div'); overlay.dataset.sidelitOverlay = '';

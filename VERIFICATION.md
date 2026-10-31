@@ -1,5 +1,27 @@
 # Verification
 
+## v0.6.0 review loop
+
+Changes marked against the last reviewed version or commit, with per-passage revert; unsaved
+changes attached to requests; a finished-turn status; `--find`; outline and anchors; read-only
+Git status through libgit2; math drawn while reading.
+
+- Measured real Crepe with its Latex feature on: `Price $5 only.` became `\\$5`, `$$E$$` became
+  `$E$`, and `$500 and $HOME` rendered as math. It stays off; math is decorations with a stricter
+  rule. `tests/crepe-roundtrip.test.ts` holds `$`, inline, and display math byte-exact.
+- Found through the packaged smoke test and fixed: Crepe's automatic paragraph after a final
+  code block or table counted as an edit once a file had reloaded from disk, so any later
+  transaction could mark a clean document unsaved. A `--find` right after a write could be lost
+  to a preview reload.
+- Unit tests cover change detection and revert round trips, block counts against real Crepe,
+  headings and anchors, math rules, draft text, and the bridge's finished state. A Rust test
+  sets `core.fsmonitor` and a required clean filter in a repository and confirms neither runs.
+- `scripts/desktop-smoke.py` covers each feature in packaged WKWebView. `scripts/companion-smoke.py`
+  uses real Pi: finished after a real edit, Show changes, and a draft reaching the model unsaved.
+
+Limits: VoiceOver was not checked. Marks were not tried on a very large document; a difference
+too large for block matching becomes one change. Intel is cross-compiled, not run.
+
 ## v0.5.0 rich editor for all Markdown
 
 The read-only Markdown preview is gone. Every Markdown file opens in Crepe unless a test

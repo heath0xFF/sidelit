@@ -39,7 +39,7 @@ pub struct Inner {
 pub struct Service(pub Mutex<Inner>, Mutex<()>);
 
 impl Service {
-    fn allowed(&self, path: &Path) -> Result<PathBuf> {
+    pub(crate) fn allowed(&self, path: &Path) -> Result<PathBuf> {
         let p = files::identity(path)?;
         let inner = self.0.lock().unwrap();
         if inner.grants.contains(&p) || inner.roots.iter().any(|r| p.starts_with(r)) {
@@ -48,7 +48,7 @@ impl Service {
             Err("This path has not been authorized. Use Open File or Open Folder.".into())
         }
     }
-    fn document(&self, path: &Path) -> Result<PathBuf> {
+    pub(crate) fn document(&self, path: &Path) -> Result<PathBuf> {
         let p = self.allowed(path)?;
         if p != path || !self.0.lock().unwrap().open.contains(&p) {
             return Err("Document is not open, or its path now points elsewhere".into());
@@ -505,8 +505,12 @@ pub async fn open_link(
             .map_err(|e| e.to_string()),
         "file" => {
             let path = target.to_file_path().map_err(|_| "Invalid file link")?;
-            let request =
-                cli::parse(&[path.to_string_lossy().into()], Path::new("/"))?.ok_or("No path")?;
+            let mut request = cli::parse(
+                &["--".into(), path.to_string_lossy().into()],
+                Path::new("/"),
+            )?
+            .ok_or("No path")?;
+            request.anchor = target.fragment().map(str::to_string);
             let authorized = state.allowed(&request.path).is_ok();
             if !authorized
                 && !app

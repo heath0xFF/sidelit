@@ -7,6 +7,8 @@ import "monaco-editor/languages/definitions/markdown/register.js";
 import "monaco-editor/languages/definitions/html/register.js";
 import { formatForPath } from './formats';
 import { sourceSelection, type SelectionContext } from "./inspection";
+import type { ChangeSet } from "./changes";
+import { claimJump, type Jump } from "./jump";
 import "monaco-editor/features/register.all.js";
 import EditorWorker from "monaco-editor/editor/editor.worker.js?worker";
 
@@ -74,6 +76,10 @@ export default function Source({
   readOnly = false,
   history,
   onTextSelection,
+  changes,
+  changeNav,
+  jump,
+  onJumpMissed,
 }: {
   path: string;
   text: string;
@@ -84,6 +90,10 @@ export default function Source({
   readOnly?: boolean;
   history: Ref<EditorHistory>;
   onTextSelection?: (selection: SelectionContext | null) => void;
+  changes?: ChangeSet;
+  changeNav?: { index: number; nonce: number };
+  jump?: Jump;
+  onJumpMissed?: (jump: Jump) => void;
 }) {
   const root = useRef<HTMLDivElement>(null);
   const selecting = useRef(onTextSelection);
@@ -202,6 +212,38 @@ export default function Source({
     )
       editor.current.getModel()?.original.setValue(original);
   }, [path, text, original]);
+  useEffect(() => {
+    const code = editor.current;
+    if (!code || !("getValue" in code)) return;
+    const collection = code.createDecorationsCollection((changes?.changes ?? []).map((change, index) => ({
+      range: new monaco.Range(change.line, 1, Math.max(change.line, change.endLine), 1),
+      options: {
+        isWholeLine: true,
+        className: change.kind === "removed" ? undefined : "source-change" + (index === changeNav?.index ? " active" : ""),
+        linesDecorationsClassName: change.kind === "removed" ? "source-change-removed" : "source-change-bar",
+      },
+    })));
+    return () => collection.clear();
+  }, [changes, changeNav?.index, path]);
+  useEffect(() => {
+    const code = editor.current;
+    const change = changes?.changes[changeNav?.index ?? 0];
+    if (code && "getValue" in code && change && changeNav?.nonce) code.revealLineInCenter(change.line);
+  }, [changeNav?.nonce]);
+  useEffect(() => {
+    const code = editor.current;
+    if (!code || !("getValue" in code) || !claimJump(jump, "source")) return;
+    if (jump.heading) {
+      code.revealLineNearTop(jump.heading.line);
+      code.setPosition({ lineNumber: jump.heading.line, column: 1 });
+      return;
+    }
+    const model = code.getModel();
+    const match = jump.text && model ? model.findMatches(jump.text.trim(), false, false, false, null, false, 1)[0] : undefined;
+    if (!match) { onJumpMissed?.(jump); return; }
+    code.setSelection(match.range);
+    code.revealRangeInCenter(match.range);
+  }, [jump?.nonce]);
   useEffect(() => {
     applyTheme(dark);
   }, [dark]);

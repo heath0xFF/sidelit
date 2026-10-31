@@ -157,11 +157,12 @@ with tempfile.TemporaryDirectory(prefix='sidelit-companion-') as temp:
             wait(lambda: any(e.get('type') == 'agent_start' for e in events), 'Pi busy')
             click('Send to Pi')
             wait(lambda: js('return document.querySelector(".feedback-button").textContent') == 'View request', 'attempted request is not labeled unsent')
-            wait(lambda: 'Queued for Pi' in body() or 'Received' in body() or 'Pi accepted' in body(), 'native delivery acknowledgment')
+            wait(lambda: 'Queued for Pi' in body() or 'Received' in body() or 'Pi is working' in body() or 'Pi finished' in body(), 'native delivery acknowledgment')
             wait(lambda: 'Build useful things.' in file.read_text(), 'real Pi edit tool', 30)
             after_agent = wait(lambda: (m if (m := metrics()) and m['text'] == 'Build useful things.' else None), 'agent edit live refresh')
             assert abs(after_agent['anchorTop'] - before_agent['anchorTop']) <= 2, after_agent
-            wait(lambda: 'Pi accepted the request' in body(), 'Pi consumption acknowledgment')
+            wait(lambda: 'Pi finished its turn' in body(), 'Pi finished after its real edit', 30)
+            assert 'to review in open documents' in body() and js('return document.querySelector(".feedback-button").textContent') == 'Pi finished', body()
             assert any(e.get('type') == 'tool_execution_end' and not e.get('isError') for e in events), events
             capture('companion-feedback.png')
             request(f'/session/{session}/window/rect', {'width': 720, 'height': 630})
@@ -170,7 +171,43 @@ with tempfile.TemporaryDirectory(prefix='sidelit-companion-') as temp:
             assert js('const f=document.querySelector("iframe").getBoundingClientRect(),v=document.querySelector(".preview-viewport").getBoundingClientRect();return f.left>=v.left'), 'oversized viewport must remain scrollable from its left edge'
             capture('companion-feedback-narrow.png')
             request(f'/session/{session}/window/rect', {'width': 1180, 'height': 820})
+            # After a real edit, the request leads to what changed.
+            click('Show changes')
+            wait(lambda: js('return !!document.querySelector(".changes-bar")') and 'change' in js('return document.querySelector(".changes-bar").innerText'), 'Show changes opens the review')
+            capture('companion-changes.png')
+            click('Mark reviewed')
+            js('document.querySelector(".feedback-button").click()')
+            wait(lambda: js('return !document.querySelector(".feedback-panel").hidden'), 'request reopens after showing changes')
             click('New request')
+            # An unsaved draft reaches Pi through the native bridge and the real validators.
+            click('Source')
+            wait(lambda: js('return !!document.querySelector(".monaco-editor")'), 'source for a draft')
+            current = file.read_text()
+            js('''const el=document.querySelector('.source-editor');let f=el[Object.keys(el).find(k=>k.startsWith('__reactFiber$'))];let editor;for(;f&&!editor;f=f.return){let h=f.memoizedState;while(h){const v=h.memoizedState;if(v&&v.current&&v.current.getValue){editor=v.current;break}h=h.next}}editor.executeEdits('t',[{range:editor.getModel().getFullModelRange(),text:arguments[0]}])''', current + '\n<p>Draft only sentence.</p>\n')
+            wait(lambda: js('return !!document.querySelector(".tab.active .dirty-dot")'), 'unsaved draft')
+            js('document.querySelector(".feedback-button").click()')
+            wait(lambda: 'Include my unsaved changes' in body(), 'offer to attach a draft')
+            wait(lambda: js('return [...document.querySelectorAll(".feedback-target option")].some(o=>o.value===arguments[0])', target['id']), 'Pi listed for the draft request')
+            value('.feedback-target select', target['id'])
+            value('.feedback-panel textarea', 'Tell me about my draft.')
+            click('Explain')
+            sent_before = len(events)
+            click('Send to Pi')
+            def draft_prompt():
+                return next((json.dumps(e) for e in events[sent_before:] if 'Unsaved changes open in Sidelit' in json.dumps(e) and e.get('type') == 'message_start'), None)
+            prompt_seen = wait(draft_prompt, 'the draft reached the model', 30)
+            assert 'Draft only sentence.' in prompt_seen, prompt_seen[:800]
+            assert 'unsavedChanges' not in prompt_seen
+            wait(lambda: 'Pi finished its turn' in body(), 'Pi finished the draft request', 30)
+            assert 'Draft only sentence.' not in file.read_text(), 'sending a draft must not save it'
+            assert js('return !!document.querySelector(".tab.active .dirty-dot")') or js('return !!document.querySelector(".conflict")')
+            click('New request')
+            if js('return !!document.querySelector(".conflict")'):
+                click('Reload from Disk')
+            else:
+                click('Save')
+                wait(lambda: 'Draft only sentence.' in file.read_text(), 'draft saved')
+            wait(lambda: not js('return !!document.querySelector(".tab.active .dirty-dot")'), 'draft resolved')
             mdx = folder / 'page.mdx'
             mdx.write_text('export const Heading = ({children}) => <h1>{children}</h1>\n\nexport const Probe = () => <span ref={el => {if(el)setTimeout(()=>parent.postMessage({source:"fixture-mdx",text:document.body.innerText,ipc:typeof window.__TAURI_INTERNALS__},"*"),50)}} />\n\n<Heading>Real MDX {2 + 2}</Heading>\n\n<Callout>Local component</Callout>\n\n- [x] Task\n\n```js\nconst answer = 42\n```\n\n<Probe />\n')
             launch(mdx)

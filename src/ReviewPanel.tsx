@@ -47,7 +47,7 @@ export default function ReviewPanel({ store, open, onClose, onEdit, onReveal, is
     return () => { alive = false; };
   }, [open, project, refresh]);
   useEffect(() => {
-    if (!open || busy || attempt?.ack?.status !== 'received') return;
+    if (!open || busy || !attempt?.ack || attempt.ack.status === 'settled') return;
     const timer = setTimeout(() => { void store.checkStatus().catch(() => {}); }, 1500);
     return () => clearTimeout(timer);
   }, [open, busy, attempt, store]);
@@ -76,7 +76,7 @@ export default function ReviewPanel({ store, open, onClose, onEdit, onReveal, is
       {ready && !record.notes.length && <p>Select text or inspect an element, then choose <strong>Add to review</strong> in the request. You can also add a note for the whole document.</p>}
       <ol className="review-list">
         {record.notes.map((note, i) => {
-          const status = !store.locked(note.id) ? 'Unsent' : !attempt?.ack ? 'Delivery unconfirmed' : attempt.ack.status === 'received' ? 'Received' : 'Accepted';
+          const status = !store.locked(note.id) ? 'Unsent' : !attempt?.ack ? 'Delivery unconfirmed' : attempt.ack.status === 'received' ? 'Received' : attempt.ack.status === 'settled' ? 'Pi finished' : 'Accepted';
           return <li key={note.id}>
           <label className="review-note-choice"><input type="checkbox" aria-label={`Select note ${i + 1}`} checked={chosen.some(item => item.id === note.id)} disabled={busy || !!attempt} onChange={e => setSelected(ids => e.target.checked ? [...ids, note.id] : ids.filter(id => id !== note.id))} />
             <span><strong>{i + 1}. {{ explain: 'Explain', review: 'Review', edit: 'Edit' }[note.intent ?? 'edit']} · {note.document.path?.split('/').pop() ?? note.document.url}<span className="review-location"> · {status}</span></strong><span>{selectionSummary(note.selection)}</span></span>
@@ -106,7 +106,7 @@ export default function ReviewPanel({ store, open, onClose, onEdit, onReveal, is
         <span className="toolbar-space" />
         <button className="primary" disabled={!ready || busy || !prepared.message || !target?.connected || !!attempt?.ack || (stale && !acknowledged)} onClick={send}>{busy ? 'Working…' : attempt?.ack ? 'Sent' : attempt ? 'Retry batch' : 'Send selected to Pi'}</button>
       </div>
-      {attempt && <div className="feedback-status" role="status">{!attempt.ack ? 'Delivery unconfirmed. Check the receipt or retry the same fixed batch.' : attempt.ack.status === 'received' ? 'Pi received the batch; waiting for acceptance.' : 'Pi accepted the batch. Acceptance does not mean the work is finished.'} Answers appear in Pi.
+      {attempt && <div className="feedback-status" role="status">{!attempt.ack ? 'Delivery unconfirmed. Check the receipt or retry the same fixed batch.' : attempt.ack.status === 'settled' ? 'Pi finished its turn, which does not mean every note succeeded. Answers are in Pi.' : attempt.ack.status === 'received' ? 'Pi received the batch; waiting for acceptance.' : 'Pi accepted the batch. Acceptance does not mean the work is finished.'} Answers appear in Pi.
         {!attempt.ack && <button disabled={busy} onClick={() => void store.checkStatus().catch(() => {})}>Check receipt</button>}
         {target?.blockId && <button onClick={() => void api.focusAgent(target.id).catch(e => setTargetError(String(e)))}>Show in Rex</button>}
       </div>}

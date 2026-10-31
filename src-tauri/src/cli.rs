@@ -8,13 +8,27 @@ pub struct Request {
     pub path: PathBuf,
     pub directory: bool,
     pub source: bool,
+    pub find: Option<String>,
+    pub anchor: Option<String>,
 }
+
+const MAX_FIND_CHARS: usize = 300;
 
 pub fn parse(args: &[String], cwd: &Path) -> Result<Option<Request>> {
     let mut source = false;
     let mut path = None;
     let mut literal = false;
-    for arg in args {
+    let mut find = None;
+    let mut args = args.iter();
+    while let Some(arg) = args.next() {
+        if !literal && arg == "--find" {
+            let text = args.next().ok_or("--find needs the text to look for")?;
+            if text.trim().is_empty() || text.chars().count() > MAX_FIND_CHARS {
+                return Err(format!("--find needs 1 to {MAX_FIND_CHARS} characters"));
+            }
+            find = Some(text.clone());
+            continue;
+        }
         if !literal && arg == "--" {
             literal = true;
             continue;
@@ -40,10 +54,15 @@ pub fn parse(args: &[String], cwd: &Path) -> Result<Option<Request>> {
         if directory && source {
             return Err("--source requires a supported document file".into());
         }
+        if directory && find.is_some() {
+            return Err("--find requires a supported document file".into());
+        }
         Ok(Request {
             path,
             directory,
             source,
+            find: find.clone(),
+            anchor: None,
         })
     })
     .transpose()
@@ -65,6 +84,26 @@ mod tests {
         assert!(parse(&["absent.md".into()], dir.path()).is_err());
         assert!(parse(&["--wat".into()], dir.path()).is_err());
         assert!(parse(&["--source".into(), ".".into()], dir.path()).is_err());
+
+        let found = parse(
+            &["--find".into(), "a passage".into(), "研究 notes.md".into()],
+            dir.path(),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(found.find.as_deref(), Some("a passage"));
+        assert!(parse(&["--find".into()], dir.path()).is_err());
+        assert!(parse(
+            &["--find".into(), " ".into(), "研究 notes.md".into()],
+            dir.path()
+        )
+        .is_err());
+        assert!(parse(
+            &["--find".into(), "x".repeat(301), "研究 notes.md".into()],
+            dir.path()
+        )
+        .is_err());
+        assert!(parse(&["--find".into(), "x".into(), ".".into()], dir.path()).is_err());
 
         for extension in ["html", "mdx"] {
             let path = dir.path().join(format!("page.{extension}"));

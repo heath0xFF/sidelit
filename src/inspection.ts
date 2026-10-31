@@ -32,6 +32,7 @@ export interface FeedbackDocument {
   diskHash?: string;
   unsaved?: boolean;
   capturedAt?: string;
+  unsavedChanges?: string;
 }
 
 export interface FeedbackMessage {
@@ -132,7 +133,12 @@ export function textContext(
   if (!text.trim()) return undefined;
   const element = selection.anchorNode?.parentElement;
   const before = range.cloneRange(); before.selectNodeContents(root ?? element ?? range.commonAncestorContainer); before.setEnd(range.startContainer, range.startOffset);
-  const offset = before.toString().length, all = (root ?? element)?.textContent ?? '';
+  // Drawn math and other overlays are not document text; reattachment skips them too.
+  const plain = (node: Node) => {
+    (node as Element).querySelectorAll?.('[data-sidelit-overlay]').forEach(overlay => overlay.remove());
+    return node.textContent ?? '';
+  };
+  const offset = plain(before.cloneContents()).length, base = root ?? element, all = base ? plain(base.cloneNode(true)) : '';
   const anchorText = range.toString().slice(0, 1200);
   const sourceLine = source ? lineForText(source, text) : null;
   return {

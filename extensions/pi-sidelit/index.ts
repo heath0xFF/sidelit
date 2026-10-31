@@ -6,7 +6,7 @@ import { StringDecoder } from 'node:string_decoder';
 import type { ExtensionAPI, ExtensionContext } from '@earendil-works/pi-coding-agent';
 import { validFeedback, promptFor, type Feedback } from './protocol';
 
-export type Receipt = { id: string; status: 'received' | 'accepted' | 'duplicate'; delivery: 'submitted' | 'queued' | 'consumed' };
+export type Receipt = { id: string; status: 'received' | 'accepted' | 'duplicate' | 'settled'; delivery: 'submitted' | 'queued' | 'consumed' };
 type Record = { digest: string; receipt: Receipt; sentAt?: number };
 export const registryDirectory = () => `/tmp/sidelit-pi-${process.getuid?.()}`;
 // Long enough for Pi's pre-run checks; a request cannot be called lost while they run.
@@ -68,7 +68,7 @@ export default function sidelit(pi: ExtensionAPI) {
     if (previous) {
       if (previous.digest !== digest) throw new Error('Message ID was already used with different content');
       if (notStarted(previous)) return deliver(message, digest);
-      return { ...previous.receipt, status: previous.receipt.status === 'accepted' ? 'duplicate' : 'received' };
+      return { ...previous.receipt, status: previous.receipt.status === 'received' ? 'received' : 'duplicate' };
     }
     if (seen.size >= 2000) throw new Error('Session feedback limit reached; start a new Pi session');
     return deliver(message, digest);
@@ -95,7 +95,7 @@ export default function sidelit(pi: ExtensionAPI) {
       socket.on('close', () => sockets.delete(socket)); socket.on('error', () => {});
       socket.on('data', chunk => {
         if (handled) return;
-        bytes += chunk.length; if (bytes > 32 * 1024) { socket.destroy(); return; }
+        bytes += chunk.length; if (bytes > 64 * 1024) { socket.destroy(); return; }
         buffer += decoder.write(chunk);
         const newline = buffer.indexOf('\n'); if (newline < 0) return;
         handled = true;
@@ -112,7 +112,11 @@ export default function sidelit(pi: ExtensionAPI) {
   pi.on('session_start', async (_event, ctx) => { try { await start(ctx); } catch (error) { await stop(); ctx.ui.notify(`Sidelit bridge: ${String(error)}`, 'error'); } });
   pi.on('session_shutdown', stop);
   pi.on('agent_start', () => publish(true));
-  pi.on('agent_settled', () => publish(false));
+  pi.on('agent_settled', () => {
+    // Pi stopped working, which is not the same as the request succeeding.
+    for (const [id, record] of seen) if (record.receipt.status === 'accepted') saveRecord(id, { ...record, receipt: { id, status: 'settled', delivery: 'consumed' } });
+    return publish(false);
+  });
   pi.on('message_start', event => {
     if (event.message.role !== 'user') return;
     const content = event.message.content;

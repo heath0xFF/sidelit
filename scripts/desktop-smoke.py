@@ -521,6 +521,159 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
         wait(lambda: js('return !document.querySelector(".feedback-panel").hidden') and 'Third' in js('return document.querySelector(".feedback-excerpt").textContent'), 'Explain captures the source selection')
         js('document.querySelector(".feedback-panel textarea").dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}))')
         wait(lambda: js('return document.querySelector(".feedback-panel").hidden'), 'Escape hides the request')
+        click('Discard request')
+
+        def rich_text():
+            return js('return document.querySelector(".ProseMirror")?.textContent ?? ""')
+        def visible(selector):
+            return js('const el=[...document.querySelectorAll(arguments[0])].at(-1);if(!el)return false;const r=el.getBoundingClientRect(),v=document.querySelector(".rich-editor").getBoundingClientRect();return r.top>=v.top-1&&r.top<v.bottom', selector)
+        def dirty_tab():
+            return js('return !!document.querySelector(".tab.active .dirty-dot")')
+
+        # Changes accumulate until reviewed, and can be stepped through and reverted one at a time.
+        reviewed = folder / 'Review.md'
+        code_block = b'```js\nconst kept = 1\n```\n'
+        reviewed.write_bytes(b'Stays.\n\nWill change.\n\nKept one.\n\nGoes away.\n\nKept two.\n\n' + code_block)
+        launch(reviewed)
+        wait(lambda: 'Will change.' in rich_text(), 'document to review')
+        assert not js('return !!document.querySelector(".changes-bar")')
+        after_agent = b'Stays.\n\nDid change.\n\nKept one.\n\nKept two.\n\nBrand new.\n\n' + code_block
+        reviewed.write_bytes(after_agent)
+        wait(lambda: '3 changes' in body(), 'changed passages counted')
+        wait(lambda: js('return document.querySelectorAll(".sidelit-change").length') == 2, 'changed passages marked, in a document ending in code')
+        assert js('return document.querySelector(".sidelit-change-text").textContent') == 'Did'
+        assert js('return document.querySelector(".sidelit-removed").dataset.removed') == 'Goes away.'
+        assert 'Goes away.' not in rich_text() and not dirty_tab() and reviewed.read_bytes() == after_agent
+        screenshot('changes-rich.png')
+        click('Next')
+        wait(lambda: js('return !!document.querySelector(".sidelit-removed.active")'), 'next change is active')
+        click('Revert this')
+        wait(lambda: 'Goes away.' in rich_text() and '2 changes' in body(), 'revert returns one passage to the draft')
+        assert dirty_tab() and reviewed.read_bytes() == after_agent, 'revert must not write the file'
+        click('Undo revert')
+        wait(lambda: '3 changes' in body() and 'Goes away.' not in rich_text(), 'undo a revert')
+        assert not dirty_tab() and reviewed.read_bytes() == after_agent
+        after_agent += b'\nAnother.\n'
+        reviewed.write_bytes(after_agent)
+        wait(lambda: '4 changes' in body(), 'a later edit adds to what needs review')
+        click('Compare')
+        wait(lambda: 'Last reviewed version' in body(), 'compare with the last reviewed version')
+        click('Back to draft')
+        click('Source')
+        wait(lambda: js('return document.querySelectorAll(".source-change").length') >= 2, 'changes marked in Source')
+        js('window.dispatchEvent(new KeyboardEvent("keydown",{key:"F8",bubbles:true}))')
+        wait(lambda: js('return !!document.querySelector(".source-change.active")'), 'F8 steps through changes')
+        screenshot('changes-source.png')
+        click('Rendered')
+        wait(lambda: js('return document.querySelectorAll(".sidelit-change").length') >= 2, 'marks return with the rich editor')
+        request(f'/session/{session}/window/rect', {'width': 720, 'height': 630})
+        time.sleep(.3)
+        screenshot('changes-narrow.png')
+        assert js('return document.documentElement.scrollWidth <= innerWidth'), 'the changes bar must not overflow a narrow window'
+        request(f'/session/{session}/window/rect', {'width': 1180, 'height': 820})
+        click('Mark reviewed')
+        wait(lambda: not js('return !!document.querySelector(".changes-bar,.sidelit-change,.sidelit-removed")'), 'marking reviewed clears the marks')
+        assert not dirty_tab() and reviewed.read_bytes() == after_agent
+
+        # Math is drawn while reading, without touching the bytes, and money stays money.
+        math_doc = folder / 'Math.md'
+        math_bytes = b'Energy $E=mc^2$ here.\n\nPrice $5 only, and $HOME too.\n\n$$\n\\frac{a}{b}\n$$\n\n`$code$` stays.\n'
+        math_doc.write_bytes(math_bytes)
+        math_stamp = math_doc.stat().st_mtime_ns
+        launch(math_doc)
+        wait(lambda: js('return document.querySelectorAll(".ProseMirror .katex").length') == 2, 'inline and display math drawn')
+        assert js('return document.querySelectorAll(".math-display").length') == 1
+        assert js('return getComputedStyle(document.querySelector(".math-source")).display') == 'none'
+        assert 'Price $5 only, and $HOME too.' in body() and '$code$' in body() and 'E=mc^2$' not in body()
+        assert not dirty_tab()
+        screenshot('math.png')
+        click('Save')
+        time.sleep(.2)
+        assert math_doc.read_bytes() == math_bytes and math_doc.stat().st_mtime_ns == math_stamp, 'drawing math must not change the file'
+        edit_rendered()
+        wait(lambda: js('return !document.querySelector(".ProseMirror .katex")') and '$E=mc^2$' in body(), 'math shows as source while editing')
+        click('Done editing')
+        wait(lambda: js('return document.querySelectorAll(".ProseMirror .katex").length') == 2, 'math drawn again after editing')
+        assert not dirty_tab() and math_doc.read_bytes() == math_bytes
+
+        # Outline, same-file anchors, links with anchors between documents, and pointers from the CLI.
+        filler = b''.join(b'Filler paragraph %d.\n\n' % i for i in range(80))
+        linked = folder / 'Linked.md'
+        linked.write_bytes(b'# Top\n\n[Down](#far-section) and [Over](Other.md#second-part)\n\n' + filler + b'## Far Section\n\nThe far passage.\n')
+        other = folder / 'Other.md'
+        other.write_bytes(b'# First\n\n' + filler + b'## Second Part\n\nThe other passage.\n')
+        launch(linked)
+        wait(lambda: 'Filler paragraph 1.' in rich_text(), 'long linked document')
+        click('Outline')
+        wait(lambda: js('return [...document.querySelectorAll(".outline-list button")].map(b=>b.textContent).join("|")') == 'Top|Far Section', 'outline lists headings')
+        assert not visible('.ProseMirror h2')
+        screenshot('outline.png')
+        click('Far Section')
+        wait(lambda: visible('.ProseMirror h2'), 'outline scrolls to its heading')
+        click('Top')
+        wait(lambda: not visible('.ProseMirror h2'), 'outline scrolls back up')
+        js('document.querySelector(".ProseMirror a[href=\'#far-section\']").click()')
+        wait(lambda: visible('.ProseMirror h2'), 'same-file anchor scrolls to its heading')
+        click('Top')
+        wait(lambda: not visible('.ProseMirror h2'), 'back to the top')
+        js('document.querySelector(".ProseMirror a[href^=\'Other.md\']").click()')
+        wait(lambda: js('return document.querySelector(".tab.active")?.textContent').startswith('Other.md'), 'a link opens the other document')
+        wait(lambda: visible('.ProseMirror h2'), 'a link anchor scrolls in the other document')
+        launch('--find', 'the far passage', linked)
+        wait(lambda: js('return document.querySelector(".tab.active")?.textContent').startswith('Linked.md') and js('return document.querySelectorAll(".selection-highlight i").length') > 0, 'find marks a passage')
+        assert visible('.ProseMirror h2')
+        screenshot('find.png')
+        launch('--find', 'no such passage', linked)
+        wait(lambda: 'Could not find “no such passage”' in body(), 'a missed find is reported')
+        js('document.querySelector(".error-banner button").click()')
+        launch('--source', '--find', 'The other passage', other)
+        wait(lambda: js('return !!document.querySelector(".monaco-editor")') and js(source_editor() + 'return editor.getModel().getValueInRange(editor.getSelection())') == 'The other passage', 'find selects in Source')
+        click('Rendered')
+        page = folder / 'Page.html'
+        page.write_text('<!doctype html><h1>Heading</h1><p style="margin-top:3000px">Deep passage</p>')
+        launch('--find', 'not on this page', page)
+        wait(lambda: 'Could not find “not on this page”' in body(), 'a missed find in a page is reported')
+        js('document.querySelector(".error-banner button").click()')
+        launch('--find', 'Deep passage', page)
+        time.sleep(2.5)
+        assert 'Could not find' not in body()
+        screenshot('find-html.png')
+        click('Files')
+
+        # Git status marks changed documents, and opening one compares it with the last commit.
+        git = ['git', '-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false']
+        subprocess.run(git[:1] + ['init', '-q'], cwd=folder, check=True)
+        untouched = folder / 'Untouched.md'
+        untouched.write_text('# Committed\n\nCommitted text.\n')
+        subprocess.run(git[:1] + ['add', '-A'], cwd=folder, check=True)
+        subprocess.run(git + ['commit', '-q', '-m', 'fixture'], cwd=folder, check=True)
+        untouched.write_text('# Committed\n\nChanged after the commit.\n')
+        (folder / 'Fresh.md').write_text('# Fresh\n')
+        wait(lambda: js('return [...document.querySelectorAll(".sidebar-views button")].at(-1).textContent') == 'Changed 2', 'changed documents counted', 30)
+        wait(lambda: js('return [...document.querySelectorAll(".tree-row")].find(r=>r.textContent.startsWith("Untouched.md"))?.querySelector(".git-mark")?.textContent') == 'M', 'tree marks a changed document')
+        assert js('return [...document.querySelectorAll(".tree-row")].find(r=>r.textContent.startsWith("Fresh.md"))?.querySelector(".git-mark")?.textContent') == 'A'
+        js('[...document.querySelectorAll(".sidebar-views button")].at(-1).click()')
+        wait(lambda: js('return [...document.querySelectorAll(".sidebar .tree-row")].length') == 2, 'changed list')
+        screenshot('git-changed.png')
+        js('[...document.querySelectorAll(".sidebar .tree-row")].find(r=>r.textContent.startsWith("Untouched.md")).click()')
+        wait(lambda: 'since the last commit' in body() and '1 change' in body(), 'opening a changed document compares with the commit')
+        wait(lambda: js('return document.querySelector(".sidelit-change-text")?.textContent.length > 0'), 'the committed difference is marked')
+        assert not dirty_tab()
+        click('Mark reviewed')
+
+        # A dirty draft offers to go along with a request.
+        click('Source')
+        wait(lambda: js('return !!document.querySelector(".monaco-editor")'), 'source for a draft')
+        source_edit('# Committed\n\nAn unsaved thought.\n')
+        wait(dirty_tab, 'unsaved draft')
+        js('document.querySelector(".feedback-button").click()')
+        wait(lambda: 'Include my unsaved changes' in body(), 'offer to attach unsaved changes')
+        screenshot('draft-request.png')
+        click('Discard request')
+        click('Save')
+        wait(lambda: 'An unsaved thought.' in untouched.read_text(), 'draft saved')
+        click('Rendered')
+        click('Files')
     finally:
         js('window.__mermaidApi.publishPreview=window.__mermaidPublish;removeEventListener("message",window.__mermaidListener)')
     def rich_edit(text):
@@ -667,8 +820,8 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     wait(lambda: 'First draft.' in merge.read_text() and 'Last disk.' in merge.read_text(), 'merged save')
     wait(lambda: not js('return !!document.querySelector(".conflict")'), 'conflict resolved')
     merge.write_text('# Clean external update\n\nAgent revision.\n')
-    wait(lambda: 'Review changes' in body(), 'clean change review')
-    click('Review changes')
+    wait(lambda: 'Compare' in body() and js('return !!document.querySelector(".changes-bar")'), 'clean change review')
+    click('Compare')
     wait(lambda: js('return !!document.querySelector(".monaco-diff-editor")'), 'clean comparison')
     assert js(source_editor() + 'return editor.getModifiedEditor().getRawOptions().readOnly')
     review_text = source_text()
@@ -767,7 +920,7 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     wait(lambda: not js('return !!document.querySelector(".tab.active .dirty-dot")'), 'checkpoint test discarded')
     errors = errors_before_crash + js('return __errors')
     assert errors == [], errors
-    report = {'handoffSeconds': timing, 'editorReadySeconds': ready_seconds, 'warmHandoffSeconds': warm, 'workers': workers_before_crash + js('return __workers'), 'errors': errors, 'checks': 'Comments and raw HTML in the rich editor with byte preservation; Mermaid in the rich editor, invalid diagrams, CRLF no-op save, themes and narrow layout; MDX split with live render, last good render and recovery; Source selection actions; Crepe input; Monaco input; 80% rendered column and narrow gutter; keyboard/menu undo and redo in both editors, code blocks, and search inputs; disk reload history reset; undo/redo disk adoption; read-only history guards; CRLF; no-op save; mode/tab switches; clean refresh; conflict/diff; discard/cancel; rename; delete/recreate; repeated CLI; Unicode/caller cwd; local image and alt fidelity; project README preview/mode/no-op save; user guide rich editing; literal code preserved and HTML examples inert; frontmatter; dirty close/quit cancel; save on close; task/numbered/nested/wrapped list alignment at 12–28px; local fonts; One themes; system preference; live sizing without editor remounts; opaque frontmatter rich editing; sticky Source; scoped Quick Open; background close selection; editable diff and keyboard change acceptance; stale merged-save rejection; clean change review; New/Save As UI (native selection simulated); Save As cancel/failure; recovery checkpoint, process crash, restart, conflict-safe restore (native approval simulated), and deletion'}
+    report = {'handoffSeconds': timing, 'editorReadySeconds': ready_seconds, 'warmHandoffSeconds': warm, 'workers': workers_before_crash + js('return __workers'), 'errors': errors, 'checks': 'Change marks, stepping, revert and undo; math with byte preservation; outline, anchors and --find in the rich editor, Source and HTML; Git marks and commit comparison; comments and raw HTML in the rich editor with byte preservation; Mermaid in the rich editor, invalid diagrams, CRLF no-op save, themes and narrow layout; MDX split with live render, last good render and recovery; Source selection actions; Crepe input; Monaco input; 80% rendered column and narrow gutter; keyboard/menu undo and redo in both editors, code blocks, and search inputs; disk reload history reset; undo/redo disk adoption; read-only history guards; CRLF; no-op save; mode/tab switches; clean refresh; conflict/diff; discard/cancel; rename; delete/recreate; repeated CLI; Unicode/caller cwd; local image and alt fidelity; project README preview/mode/no-op save; user guide rich editing; literal code preserved and HTML examples inert; frontmatter; dirty close/quit cancel; save on close; task/numbered/nested/wrapped list alignment at 12–28px; local fonts; One themes; system preference; live sizing without editor remounts; opaque frontmatter rich editing; sticky Source; scoped Quick Open; background close selection; editable diff and keyboard change acceptance; stale merged-save rejection; clean change review; New/Save As UI (native selection simulated); Save As cancel/failure; recovery checkpoint, process crash, restart, conflict-safe restore (native approval simulated), and deletion'}
     (OUT / 'desktop.json').write_text(json.dumps(report, indent=2))
     print(json.dumps(report, indent=2))
     # Close only the temporary documents; the app remains available for manual checks.

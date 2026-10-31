@@ -10,7 +10,12 @@ import {
   useSyncExternalStore,
 } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { api, type AgentTarget, type Entry, type Snapshot, type RecoveryStatus, type AvailableUpdate, type DeliveryAck } from "./api";
+import { api, type AgentTarget, type Entry, type GitFile, type Snapshot, type RecoveryStatus, type AvailableUpdate, type DeliveryAck } from "./api";
+import ChangesBar from "./ChangesBar";
+import { computeChanges, draftChanges, revertChange } from "./changes";
+import Outline from "./Outline";
+import { headingForAnchor, headings, type Heading } from "./headings";
+import type { Jump } from "./jump";
 import {
   DEFAULT_FONT_SIZE,
   MIN_FONT_SIZE,
@@ -96,18 +101,26 @@ function Icon({
   );
 }
 
+function GitMark({ status }: { status?: GitFile["status"] | "folder" }) {
+  if (!status) return null;
+  const label = status === "added" ? "New, not committed" : status === "modified" ? "Changed since the last commit" : "Contains changes";
+  return <span className={`git-mark ${status}`} title={label} aria-label={label}>{status === "added" ? "A" : status === "modified" ? "M" : ""}</span>;
+}
+
 function Folder({
   path,
   level = 0,
   refresh,
   active,
   open,
+  git,
 }: {
   path: string;
   level?: number;
   refresh: number;
   active: string;
   open: (path: string) => void;
+  git: Map<string, GitFile["status"] | "folder">;
 }) {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [error, setError] = useState("");
@@ -167,7 +180,8 @@ function Folder({
               <span className="tree-indent" />
             )}
             <Icon type={entry.directory ? "folder" : "file"} />
-            <span>{entry.name}</span>
+            <span className="tree-name">{entry.name}</span>
+            <GitMark status={git.get(entry.path)} />
           </button>
           {entry.directory && expanded.has(entry.path) && (
             <Folder
@@ -176,6 +190,7 @@ function Folder({
               refresh={refresh}
               active={active}
               open={open}
+              git={git}
             />
           )}
         </li>
@@ -274,6 +289,14 @@ export default function App() {
   const [candidate, setCandidate] = useState<FeedbackMessage | null>(null);
   const [feedbackAnchor, setFeedbackAnchor] = useState<SelectionRect>();
   const [reveal, setReveal] = useState(0);
+  const [jump, setJump] = useState<Jump>();
+  const jumps = useRef(0);
+  const [sidebarView, setSidebarView] = useState<"files" | "outline" | "changed">("files");
+  const [gitFiles, setGitFiles] = useState<GitFile[]>([]);
+  const [changeNav, setChangeNav] = useState({ index: 0, nonce: 0 });
+  const [changesUnmapped, setChangesUnmapped] = useState(false);
+  const [reverted, setReverted] = useState<{ path: string; before: string; after: string }>();
+  const [feedbackAck, setFeedbackAck] = useState<DeliveryAck>();
   const [editing, setEditing] = useState(false);
   const [selection, setSelection] = useState<SelectionContext | null>(null);
   const selectionSnapshot = useRef<FeedbackMessage | null>(null);
@@ -335,6 +358,19 @@ export default function App() {
   const reason = doc?.reason;
   const mode = doc?.mode;
   const comparison = compare?.path === active ? compare : null;
+  const changeSet = useMemo(() => doc?.review ? computeChanges(doc.review.text, doc.text, doc.format) : undefined, [doc?.review?.text, doc?.text, doc?.format]);
+  const outline = useMemo(() => doc && !serverUrl && sidebarView === "outline" ? headings(doc.text, doc.format) : [], [doc?.text, doc?.format, serverUrl, sidebarView]);
+  const gitMarks = useMemo(() => {
+    const marks = new Map<string, GitFile["status"] | "folder">();
+    for (const file of gitFiles) {
+      marks.set(file.path, file.status);
+      for (let at = file.path.lastIndexOf("/"); at > workspace.length; at = file.path.lastIndexOf("/", at - 1)) marks.set(file.path.slice(0, at), "folder");
+    }
+    return marks;
+  }, [gitFiles, workspace]);
+  const feedbackDoc = feedback?.document.path ? docs.find(d => d.path === feedback.document.path) : undefined;
+  const feedbackDraft = useMemo(() => feedbackDoc && dirty(feedbackDoc) ? draftChanges(feedbackDoc.disk.text, feedbackDoc.text) : undefined, [feedbackDoc?.disk.text, feedbackDoc?.text]);
+  const reviewable = useMemo(() => feedbackAck?.status === "settled" ? docs.flatMap(d => d.review ? [{ path: d.path, count: computeChanges(d.review.text, d.text, d.format).changes.length }] : []).filter(d => d.count) : [], [feedbackAck?.status, docs]);
   const projectRoot = (!doc || !workspace || doc.path.startsWith(workspace + '/') ? workspace : '') || doc?.path.split("/").slice(0, -1).join("/") || undefined;
   const captureFeedback = (selection: SelectionContext, intent: FeedbackIntent): FeedbackMessage => {
     const document = serverUrl
@@ -370,7 +406,7 @@ export default function App() {
   const dismissFeedback = () => { setFeedbackOpen(false); setReviewAttachmentId(undefined); setSelection(null); setInspect(false); window.getSelection()?.removeAllRanges(); };
   const clearFeedback = () => {
     feedbackRef.current = { message: null, attempted: false };
-    setFeedback(null); setCandidate(null); setReviewEditingId(undefined); dismissFeedback();
+    setFeedback(null); setFeedbackAck(undefined); setCandidate(null); setReviewEditingId(undefined); dismissFeedback();
   };
   const previewShortcut = (key: string) => {
     if (key === 'i') setInspect(value => !value);
@@ -430,6 +466,56 @@ export default function App() {
     setCompare(null);
     if (!workspaceRef.current) await root(file.parent);
   }, []);
+  const pointTo = useCallback((path: string, target: Pick<Jump, "text" | "heading">) => {
+    setJump({ nonce: ++jumps.current, path, ...target });
+  }, []);
+  const pickHeading = (heading: Heading) => { if (doc) pointTo(doc.path, { heading: { index: heading.index, line: heading.line } }); };
+  const jumpMissed = useCallback((missed: Jump) => { if (missed.text) setError(`Could not find “${missed.text}” in ${name(missed.path)}.`); }, []);
+  const goToChange = useCallback((index: number) => {
+    setChangeNav(old => ({ index, nonce: old.nonce + 1 }));
+  }, []);
+  useEffect(() => { setChangeNav({ index: 0, nonce: 0 }); setReverted(undefined); }, [active, doc?.review?.hash]);
+  useEffect(() => {
+    const count = changeSet?.changes.length ?? 0;
+    if (changeNav.index >= count && count) setChangeNav(old => ({ ...old, index: count - 1 }));
+    // Nothing left to review, such as after reverting the only change or an agent undoing its edit.
+    if (doc?.review && changeSet && !count && !reverted) documents.update(doc.path, { review: undefined, reviewFrom: undefined });
+  }, [changeSet]);
+  const stepChange = (delta: number) => {
+    const count = changeSet?.changes.length;
+    if (!count || !doc) return;
+    // An HTML page has no marks to step through, so changes are shown in its source.
+    if (doc.format === "html" && doc.mode === "rendered") documents.setMode(doc.path, "source");
+    goToChange((changeNav.index + delta + count) % count);
+  };
+  const revertCurrent = () => {
+    const change = changeSet?.changes[changeNav.index];
+    if (!doc || !change) return;
+    const after = revertChange(doc.text, change);
+    setReverted({ path: doc.path, before: doc.text, after });
+    documents.edit(doc.path, after);
+  };
+  const refreshGit = useCallback(() => {
+    const path = workspaceRef.current;
+    if (!path) { setGitFiles([]); return; }
+    void api.gitStatus(path).then(status => { if (workspaceRef.current === path) setGitFiles(status.files); }).catch(() => setGitFiles([]));
+  }, []);
+  useEffect(() => {
+    const timer = setTimeout(refreshGit, 250);
+    return () => clearTimeout(timer);
+  }, [workspace, refresh, refreshGit, feedbackAck?.status]);
+  useEffect(() => {
+    // Commits and folders not on screen raise no watcher events.
+    const timer = setInterval(refreshGit, 15_000);
+    window.addEventListener("focus", refreshGit);
+    return () => { clearInterval(timer); window.removeEventListener("focus", refreshGit); };
+  }, [refreshGit]);
+  const openChanged = async (path: string) => {
+    await open(path);
+    if (documents.get(path)?.review) return;
+    const committed = await api.gitCommitted(path);
+    if (committed) documents.compareWithCommit(path, committed);
+  };
   const finishStartup = (enabled: boolean) => {
     if (enabled) journal.start();
     initializedRef.current = true;
@@ -486,7 +572,18 @@ export default function App() {
             if (stopped) return;
             try {
               if (request.directory) await root(request.path);
-              else await open(request.path, request.source);
+              else {
+                await open(request.path, request.source);
+                // An agent often writes a file and points at it at once; look at what it wrote.
+                if (request.find || request.anchor) await documents.refresh(request.path);
+                if (request.find) pointTo(request.path, { text: request.find });
+                if (request.anchor) {
+                  const opened = documents.get(request.path);
+                  const heading = opened && headingForAnchor(headings(opened.text, opened.format), request.anchor);
+                  if (heading) pointTo(request.path, { heading: { index: heading.index, line: heading.line } });
+                  else report(`There is no heading for #${request.anchor} in ${name(request.path)}.`);
+                }
+              }
             } catch (e) {
               report(e);
             }
@@ -513,7 +610,7 @@ export default function App() {
       drainRef.current = () => {};
       off.forEach((fn) => fn());
     };
-  }, [open, report]);
+  }, [open, report, pointTo]);
   useEffect(() => {
     const media = matchMedia("(prefers-color-scheme: dark)");
     const update = (event: MediaQueryListEvent) => setSystemDark(event.matches);
@@ -717,6 +814,12 @@ export default function App() {
   };
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
+      if (e.key === "F8" && !prompt && !quick && !sessionDialog && !serverDialog && !feedbackOpen && !reviewOpen && !locked && changeSet?.changes.length && !comparison && !serverUrl) {
+        e.preventDefault();
+        e.stopPropagation();
+        stepChange(e.shiftKey ? -1 : 1);
+        return;
+      }
       if (e.key === "Escape" && !prompt && !quick && !sessionDialog && !serverDialog) {
         if (reviewOpen) { e.preventDefault(); setReviewOpen(false); return; }
         if (feedbackOpen || reviewAttachmentId || inspect || selection) { e.preventDefault(); dismissFeedback(); return; }
@@ -790,8 +893,8 @@ export default function App() {
             <button className={'toolbar-action' + (inspect ? ' tool-active' : '')} aria-label={inspect ? 'Inspecting…' : 'Inspect'} aria-pressed={inspect} onClick={() => { setFeedbackOpen(false); setReviewOpen(false); setInspect((value) => !value); }} title="Inspect an element (⌘⇧I)">
               <Icon type="inspect" /><span>{inspect ? "Inspecting…" : "Inspect"}</span>
             </button>
-            <button className={'toolbar-action feedback-button' + (feedback ? ' has-request' : '') + (selection || feedback ? ' tool-active' : '')} aria-label={unsentFeedback ? 'Resume unsent draft' : feedback ? 'View request' : 'Feedback'} aria-expanded={feedbackOpen} onClick={() => openFeedback(selection ?? { type: "document", text: "" })} title={unsentFeedback ? 'Resume unsent draft (⌘⇧F). Kept until app exit.' : feedback ? 'View request and delivery status (⌘⇧F)' : selection ? 'Feedback on selection (⌘⇧F)' : 'Document feedback (⌘⇧F)'}>
-              <Icon type="feedback" /><span>{unsentFeedback ? 'Unsent draft' : feedback ? 'View request' : 'Feedback'}</span>
+            <button className={'toolbar-action feedback-button' + (feedback ? ' has-request' : '') + (selection || feedback ? ' tool-active' : '')} aria-label={unsentFeedback ? 'Resume unsent draft' : feedbackAck?.status === 'settled' ? 'Pi finished. View request' : feedback ? 'View request' : 'Feedback'} aria-expanded={feedbackOpen} onClick={() => openFeedback(selection ?? { type: "document", text: "" })} title={unsentFeedback ? 'Resume unsent draft (⌘⇧F). Kept until app exit.' : feedback ? 'View request and delivery status (⌘⇧F)' : selection ? 'Feedback on selection (⌘⇧F)' : 'Document feedback (⌘⇧F)'}>
+              <Icon type="feedback" /><span>{unsentFeedback ? 'Unsent draft' : feedbackAck?.status === 'settled' ? 'Pi finished' : feedback ? 'View request' : 'Feedback'}</span>
             </button>
           </>
         )}
@@ -917,13 +1020,31 @@ export default function App() {
                   {workspace ? name(workspace) : "No folder open"}
                 </span>
               </div>
-              {workspace ? (
+              <div className="sidebar-views" role="group" aria-label="Sidebar view">
+                <button aria-pressed={sidebarView === "files"} onClick={() => setSidebarView("files")}>Files</button>
+                <button aria-pressed={sidebarView === "outline"} onClick={() => setSidebarView("outline")}>Outline</button>
+                <button aria-pressed={sidebarView === "changed"} onClick={() => setSidebarView("changed")}>Changed{gitFiles.length ? ` ${gitFiles.length}` : ""}</button>
+              </div>
+              {sidebarView === "outline" ? (
+                doc && !serverUrl ? <Outline items={outline} onPick={pickHeading} /> : <div className="tree-empty">Open a document to see its headings</div>
+              ) : sidebarView === "changed" ? (
+                gitFiles.length ? <ul className="tree-list">
+                  {gitFiles.map((file) => <li key={file.path}>
+                    <button className={`tree-row ${active === file.path ? "selected" : ""}`} title={file.path} onClick={() => void openChanged(file.path).catch(report)}>
+                      <Icon type="file" />
+                      <span className="tree-name">{workspace && file.path.startsWith(workspace + "/") ? file.path.slice(workspace.length + 1) : name(file.path)}</span>
+                      <GitMark status={file.status} />
+                    </button>
+                  </li>)}
+                </ul> : <div className="tree-empty">No documents changed since the last commit</div>
+              ) : workspace ? (
                 <Folder
                   key={workspace}
                   path={workspace}
                   refresh={refresh}
                   active={active}
                   open={(p) => void open(p).catch(report)}
+                  git={gitMarks}
                 />
               ) : (
                 <div className="sidebar-empty">
@@ -1040,11 +1161,18 @@ export default function App() {
                   </div>
                 </section>
               )}
-              {doc.review && !doc.pending && !comparison && !serverUrl && <section className="changes-banner">
-                <span>Updated from disk. Review the latest external change.</span>
-                <button onClick={() => setCompare({ path: doc.path, kind: "review", disk: doc.review! })}>Review changes</button>
-                <button onClick={() => documents.update(doc.path, { review: undefined })}>Dismiss</button>
-              </section>}
+              {doc.review && changeSet && !doc.pending && !comparison && !serverUrl && <ChangesBar
+                changes={changeSet.changes}
+                index={changeNav.index}
+                source={doc.reviewFrom}
+                unmapped={changesUnmapped && doc.format === "markdown" && mode === "rendered"}
+                canUndo={reverted?.path === doc.path && reverted.after === doc.text}
+                onGo={(index) => { if (doc.format === "html" && mode === "rendered") documents.setMode(doc.path, "source"); goToChange(index); }}
+                onRevert={revertCurrent}
+                onUndo={() => { if (reverted) { documents.edit(doc.path, reverted.before); setReverted(undefined); } }}
+                onCompare={() => setCompare({ path: doc.path, kind: "review", disk: doc.review! })}
+                onDone={() => { setReverted(undefined); documents.update(doc.path, { review: undefined, reviewFrom: undefined }); }}
+              />}
               {mode === "rendered" && /^(---|\+\+\+)[ \t]*\r?\n/.test(doc.text) && !comparison && !serverUrl && <div className="fidelity-note">Frontmatter is kept unchanged. Use Source to edit metadata.</div>}
               {reason && !comparison && !serverUrl && (
                 <div className="fidelity-note">
@@ -1054,12 +1182,12 @@ export default function App() {
               {comparison ? (
                 <>
                   <div className="comparison-help">
-                    <span>{comparison.kind === "conflict" ? "Edit your draft or use a change arrow to take disk text. Save Merged checks the disk again before writing." : "The previous disk version and your current text. Both panes are read only."}</span>
+                    <span>{comparison.kind === "conflict" ? "Edit your draft or use a change arrow to take disk text. Save Merged checks the disk again before writing." : `${doc.reviewFrom === "commit" ? "The last commit" : "The version you last reviewed"} and your current text. Both panes are read only.`}</span>
                     {comparison.kind === "conflict" && doc.pending?.snapshot && doc.pending.snapshot.hash !== comparison.disk.hash && <button onClick={() => setCompare({ ...comparison, disk: doc.pending!.snapshot! })}>Refresh disk pane</button>}
                     {(!doc.pending || comparison.kind === "review") && <button onClick={() => setCompare(null)}>Back to draft</button>}
                   </div>
                   <div className="compare-labels">
-                    <span>{comparison.kind === "review" ? "Previous disk version" : doc.pending?.error ? "Last available disk version" : "Reviewed disk version"} · read only</span>
+                    <span>{comparison.kind === "review" ? (doc.reviewFrom === "commit" ? "Last commit" : "Last reviewed version") : doc.pending?.error ? "Last available disk version" : "Reviewed disk version"} · read only</span>
                     <span>{comparison.kind === "review" ? "Current text · read only" : "Your draft · editable"}</span>
                   </div>
                   <Suspense
@@ -1110,6 +1238,10 @@ export default function App() {
                     history={history}
                     onChange={(text) => documents.edit(doc.path, text)}
                     onTextSelection={captureSelection}
+                    changes={changeSet}
+                    changeNav={changeNav}
+                    jump={jump?.path === doc.path ? jump : undefined}
+                    onJumpMissed={jumpMissed}
                   />
                 </Suspense>
               ) : doc.format === "mdx" ? (
@@ -1124,6 +1256,9 @@ export default function App() {
                       history={history}
                       onChange={(text) => documents.edit(doc.path, text)}
                       onTextSelection={captureSelection}
+                      changes={changeSet}
+                      changeNav={changeNav}
+                      jump={jump?.path === doc.path ? jump : undefined}
                     />
                   </Suspense>
                   <Preview
@@ -1131,6 +1266,8 @@ export default function App() {
                     path={doc.path}
                     source={doc.text}
                     format="mdx"
+                    jump={jump?.path === doc.path ? jump : undefined}
+                    onJumpMissed={jumpMissed}
                     dark={dark}
                     fontSize={size}
                     refresh={refresh + previewRefresh}
@@ -1159,6 +1296,11 @@ export default function App() {
                   editable={editing}
                   attachment={attachment}
                   reveal={reveal}
+                  changes={changeSet}
+                  changeNav={changeNav}
+                  jump={jump?.path === doc.path ? jump : undefined}
+                  onJumpMissed={jumpMissed}
+                  onChangesUnmapped={setChangesUnmapped}
                 />
               ) : (
                 <Preview
@@ -1166,6 +1308,8 @@ export default function App() {
                   path={doc.path}
                   source={doc.text}
                   format="html"
+                  jump={jump?.path === doc.path ? jump : undefined}
+                  onJumpMissed={jumpMissed}
                   dark={dark}
                   fontSize={size}
                   refresh={refresh + previewRefresh}
@@ -1263,8 +1407,17 @@ export default function App() {
         onReveal={() => revealFeedback(feedback)}
         savedNote={!!reviewEditingId}
         collectionBusy={!reviewState.ready || reviewState.busy}
-        onCollect={async () => {
-          await reviews.save({ ...feedback, id: reviewEditingId ?? feedback.id });
+        draft={feedbackDraft}
+        changeCount={reviewable.reduce((total, item) => total + item.count, 0)}
+        onAck={setFeedbackAck}
+        onShowChanges={() => {
+          const first = reviewable.find(item => item.path === feedback.document.path) ?? reviewable[0];
+          if (!first) return;
+          setActive(first.path); setServerUrl(''); setCompare(null); setFeedbackOpen(false);
+          goToChange(0);
+        }}
+        onCollect={async (includeDraft) => {
+          await reviews.save({ ...feedback, id: reviewEditingId ?? feedback.id, document: { ...feedback.document, unsavedChanges: includeDraft ? feedbackDraft?.text : undefined } });
           const edited = !!reviewEditingId;
           clearFeedback();
           if (edited) setReviewOpen(true);

@@ -1,6 +1,7 @@
 mod agents;
 mod cli;
 mod files;
+mod git;
 mod icons;
 mod integrations;
 mod menu;
@@ -53,7 +54,7 @@ fn acknowledge(path: Option<&Path>, result: Result<(), String>) {
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
     if args == ["--help"] || args == ["-h"] {
-        println!("Sidelit — a visual companion for terminal development.\n\nUsage: sidelit [--source] [PATH]\n       sidelit setup [--pi] [--skill] [--dry-run] [--json]\n       sidelit doctor [--project DIR] [--json]\n       sidelit sessions [--project DIR] [--json]\n       sidelit --help\n       sidelit --version\n\nPATH is a Markdown, MDX, or HTML file, or a folder, relative to your current directory.\nRequests reuse the running app. The command returns after handoff.\nSetup installs bundled integrations without a checkout. Existing custom installations are preserved.\nDoctor is read-only; it never sends an agent instruction. JSON schema version: 1.\nExit codes: 0 success, 1 setup conflict or no healthy matching Pi (doctor), 2 invalid request/error.\nUse -- before a path named setup, doctor, or sessions.");
+        println!("Sidelit — a visual companion for terminal development.\n\nUsage: sidelit [--source] [--find TEXT] [PATH]\n       sidelit setup [--pi] [--skill] [--dry-run] [--json]\n       sidelit doctor [--project DIR] [--json]\n       sidelit sessions [--project DIR] [--json]\n       sidelit --help\n       sidelit --version\n\nPATH is a Markdown, MDX, or HTML file, or a folder, relative to your current directory.\nRequests reuse the running app. The command returns after handoff.\nSetup installs bundled integrations without a checkout. Existing custom installations are preserved.\nDoctor is read-only; it never sends an agent instruction. JSON schema version: 1.\nExit codes: 0 success, 1 setup conflict or no healthy matching Pi (doctor), 2 invalid request/error.\nUse -- before a path named setup, doctor, or sessions.");
         return;
     }
     if args == ["--version"] {
@@ -157,6 +158,8 @@ fn main() {
             preview::response(context.app_handle(), request)
         })
         .invoke_handler(tauri::generate_handler![
+            git::git_status,
+            git::git_committed,
             service::ready,
             service::choose,
             service::open_document,

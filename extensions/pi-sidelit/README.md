@@ -34,13 +34,15 @@ Acknowledgments:
 - `received` + `submitted`/`queued`: the bridge recorded the message and invoked
   Pi's void send API. This is not proof of Pi acceptance.
 - `accepted` + `consumed`: Pi emitted `message_start` for that user message.
+- `settled`: an accepted message's agent turn ended (`agent_settled`). Pi finished
+  its turn; this does not mean the request succeeded.
 - `duplicate`: the same ID/content was previously consumed; it is not resent.
 - `error`: malformed message, wrong project, reused ID with different content,
   missing receipt, or a session limit. Errors include the request ID when valid.
 
-Sidelit polls `{ "op": "status", "id": "…" }` until consumption. Retries preserve
+Sidelit polls `{ "op": "status", "id": "…" }` until the turn settles. Retries preserve
 the original message ID and payload. Receipts survive reload through Pi session
-entries, bounded to 2,000 per session. They are not an edit-completion signal.
+entries, bounded to 2,000 per session. They are not an edit-success signal.
 If Pi discards a follow-up, the receipt remains received; send a new deliberate
 instruction instead of retrying the same ID. Ephemeral Pi sessions do not provide
 crash-persistent receipts. OS user permissions are the trust boundary; this is

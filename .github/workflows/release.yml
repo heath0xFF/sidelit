@@ -142,11 +142,24 @@ jobs:
 
           **This release is ad-hoc signed, not Apple-notarized.** If macOS blocks the first launch, use **System Settings → Privacy & Security → Open Anyway** for Sidelit, only if you trust this download. Do not disable Gatekeeper.
 
-          **New in 0.5.0: one rich editor for Markdown, and live MDX.**
+          **New in 0.6.0: see what Pi changed, and tell it what you're looking at.**
+
+          - **Marked changes.** When a file changes on disk, changed passages get a margin bar, changed words are highlighted, and removed passages show struck through. Step with F8 and Shift+F8, revert one passage into your draft, compare, or mark it reviewed. Marks last until the tab closes or the app quits, and a first rich edit can normalize Markdown and show up as changes.
+          - **Send your unsaved draft.** **Include my unsaved changes** sends up to 12 KiB of them with a request.
+          - **Pi finished.** Requests and the toolbar show when Pi finishes its turn, with **Show changes**. Finishing does not mean the request succeeded.
+          - **Agents can point.** `sidelit --find "text" -- file` opens a file and marks the first match in the rich editor, Source, or HTML.
+          - **Outline and anchors.** The sidebar lists headings, and links follow heading anchors within a file and across documents.
+          - **Git status.** The file tree shows changed and new documents, and **Changed** compares them with the last commit. It reads the repository through libgit2 and never runs `git`.
+          - **Math while reading.** `$…$` and `$$…$$` draw in the rich editor and show their source when you edit. The file never changes. `$5` and `$HOME` stay text; commands like `\{` lose their backslash when drawn because Markdown treats them as escapes.
+          - **Fix.** A document ending in a code block or table could be marked unsaved after a reload and a click.
+
+          **Pi users:** after updating, run `sidelit setup --pi --skill`, then `/reload` in each Pi session. Draft attachment and **Pi finished** need the updated extension.
+
+          **Included from 0.5.0: one rich editor for Markdown, and live MDX.**
 
           - **No more read-only Markdown preview.** Markdown opens in the rich editor unless it would lose something there. Fence metadata, byte-order marks, unclosed frontmatter, non-web link schemes, and files over 256 KiB open in Source.
           - **Diagrams in place.** Mermaid draws inside the rich editor and follows the theme. A broken diagram shows an error, and its toggle reveals the code. An extremely complex diagram can stall the window.
-          - **Raw HTML, math, and comments are kept.** Raw HTML and math show as plain text and comments stay hidden. All stay byte-for-byte unchanged when you edit around them. Reference links become inline links on the first rich edit, with the same targets.
+          - **Raw HTML, math, and comments are kept.** Raw HTML shows as plain text and comments stay hidden. All stay byte-for-byte unchanged when you edit around them. Reference links become inline links on the first rich edit, with the same targets.
           - **Live MDX.** MDX shows Source beside a render that updates as you type. A syntax error keeps the last good render on screen.
           - **Ask from Source.** Selecting text in Source now offers Explain, Review, and Edit, with the exact line.
           - **Clearer Pi failures.** A request Pi never started now fails after about 10 seconds, and retrying sends it again. Run `/reload` in Pi after updating.
@@ -174,9 +187,9 @@ jobs:
 
           **Pi users:** after updating, run `sidelit setup --pi --skill`, then `/reload` in each intended Pi session. Batch delivery needs the updated extension; older extensions still support quick requests. Setup preserves custom installations.
 
-          This patch passed 144 frontend/bridge tests, 28 Rust tests, and packaged macOS editor and feedback smoke tests. Light/dark welcome icons, diagram previews, and feedback highlights were visually checked. Live system Light/Dark switching still needs a manual check. VoiceOver, Intel runtime, and older macOS versions remain unverified.
+          This release passed 197 frontend/bridge tests, 31 Rust tests, and packaged macOS editor, feedback, review, and real-Pi companion smoke tests. Live system Light/Dark switching still needs a manual check. VoiceOver, Intel runtime, and older macOS versions remain unverified.
 
-          Saved notes use private OS permissions, not encryption. Force-quit or a crash can still lose an unsaved quick draft. Receipt and acceptance do not mean the work is complete; answers stay in Pi. Standalone MDX imports require your development server; server inspection requires the opt-in preview bridge. Explain/Review express intent to Pi, not an edit-permission boundary. See the README for setup and security details.
+          Saved notes use private OS permissions, not encryption. Force-quit or a crash can still lose an unsaved quick draft. Receipt, acceptance, and a finished turn do not mean the work succeeded; answers stay in Pi. Standalone MDX imports require your development server; server inspection requires the opt-in preview bridge. Explain/Review express intent to Pi, not an edit-permission boundary. See the README for setup and security details.
 
           **From 0.1.1 or later:** use **Actions → Check for Updates**, then **Install & Restart**.
 

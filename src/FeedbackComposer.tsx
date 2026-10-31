@@ -3,20 +3,24 @@ import { api, type AgentTarget, type DeliveryAck } from './api';
 import { selectionSummary, type FeedbackMessage, type SelectionRect } from './inspection';
 
 import { intentInstruction, NOT_STARTED } from './review';
+import { MAX_DRAFT_BYTES } from './changes';
 
-export default function FeedbackComposer({ context, open, targets, targetId, onTarget, onChange, onSend, onClose, onDiscard, loading, targetError, onRefreshTargets, stale, candidate, onReplace, onReveal, anchor, onCollect, savedNote = false, collectionBusy = false }: {
+export default function FeedbackComposer({ context, open, targets, targetId, onTarget, onChange, onSend, onClose, onDiscard, loading, targetError, onRefreshTargets, stale, candidate, onReplace, onReveal, anchor, onCollect, savedNote = false, collectionBusy = false, draft, changeCount = 0, onShowChanges, onAck }: {
   context: FeedbackMessage; open: boolean; targets: AgentTarget[]; targetId: string;
   onTarget: (id: string) => void; onChange: (change: Partial<FeedbackMessage>) => void;
   onSend: (target: string, message: FeedbackMessage) => Promise<DeliveryAck>; onClose: () => void; onDiscard: () => void;
   loading: boolean; targetError: string; onRefreshTargets: () => void; stale: boolean;
   candidate: FeedbackMessage | null; onReplace: () => void; onReveal: () => void; anchor?: SelectionRect;
-  onCollect?: () => Promise<void>; savedNote?: boolean; collectionBusy?: boolean;
+  onCollect?: (includeDraft: boolean) => Promise<void>; savedNote?: boolean; collectionBusy?: boolean;
+  draft?: { text: string; bytes: number }; changeCount?: number; onShowChanges?: () => void; onAck?: (ack: DeliveryAck | undefined) => void;
 }) {
   const [sending, setSending] = useState(false);
   const [collecting, setCollecting] = useState(false);
   const [ack, setAck] = useState<DeliveryAck>();
   const [error, setError] = useState('');
   const [acknowledgedStale, setAcknowledgedStale] = useState(false);
+  const [includeDraft, setIncludeDraft] = useState(true);
+  const draftFits = !!draft && draft.bytes <= MAX_DRAFT_BYTES;
   const attempt = useRef<{ target: string; message: FeedbackMessage } | undefined>(undefined);
   const input = useRef<HTMLTextAreaElement>(null);
   const targetSelect = useRef<HTMLSelectElement>(null);
@@ -30,8 +34,9 @@ export default function FeedbackComposer({ context, open, targets, targetId, onT
     return () => { if (previous?.isConnected) previous.focus?.(); };
   }, [open]);
   useEffect(() => { setAcknowledgedStale(false); }, [stale, context.document.revision]);
+  useEffect(() => { onAck?.(ack); }, [ack?.status]);
   useEffect(() => {
-    if (ack?.status !== 'received' || !attempt.current) return;
+    if (!ack || ack.status === 'settled' || !attempt.current) return;
     let cancelled = false, timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
       try {
@@ -39,7 +44,8 @@ export default function FeedbackComposer({ context, open, targets, targetId, onT
         if (!cancelled && next.status === 'failed') { setAck(undefined); setError(NOT_STARTED); return; }
         if (!cancelled) { setAck(next); setError(''); }
       }
-      catch (error) { if (!cancelled) setError(String(error) + ' The instruction may already be queued.'); }
+      // Once Pi has taken the request, a failed check only means Pi may have closed.
+      catch (error) { if (!cancelled && ack.status === 'received') setError(String(error) + ' The instruction may already be queued.'); }
       if (!cancelled) timer = setTimeout(poll, 1500);
     };
     timer = setTimeout(poll, 300);
@@ -65,15 +71,15 @@ export default function FeedbackComposer({ context, open, targets, targetId, onT
     if (savedNote || collecting || sending || ack || !target?.connected || (intent === 'edit' && !context.instruction.trim()) || (!attempt.current && stale && !acknowledgedStale)) return;
     if (new TextEncoder().encode(context.instruction).length > 7400) { setError('The instruction is too long. Shorten it before sending.'); return; }
     setSending(true); setError('');
-    attempt.current ??= { target: targetId, message: { ...context, instruction: `${intentInstruction(intent)}\n\n${context.instruction.trim()}`.trim() } };
+    attempt.current ??= { target: targetId, message: { ...context, document: { ...context.document, unsavedChanges: includeDraft && draftFits ? draft!.text : undefined }, instruction: `${intentInstruction(intent)}\n\n${context.instruction.trim()}`.trim() } };
     try { setAck(await onSend(attempt.current.target, attempt.current.message)); }
-    catch (error) { setError(String(error) + ' Retry uses the same message ID.'); }
+    catch (error) { setError(String(error) + (String(error).includes('Invalid feedback') ? ' Run /reload in Pi, in case it has an older Sidelit extension.' : '') + ' Retry uses the same message ID.'); }
     finally { setSending(false); }
   };
   const collect = async () => {
     if (!onCollect || collecting || collectionBusy || sending || attempt.current) return;
     setCollecting(true); setError('');
-    try { await onCollect(); } catch (error) { setError(String(error)); }
+    try { await onCollect(includeDraft && draftFits); } catch (error) { setError(String(error)); }
     finally { setCollecting(false); }
   };
   return <section ref={panel} className="feedback-panel" hidden={!open} aria-label="Sidelit feedback" onKeyDown={event => {
@@ -97,7 +103,11 @@ export default function FeedbackComposer({ context, open, targets, targetId, onT
       </details>
       {context.selection.type !== 'document' && <button className="reveal-selection" onClick={onReveal}>Reveal selection</button>}
     </div>
-    {context.document.unsaved && <p className="feedback-notice">Captured from an unsaved draft. Pi can read the disk version; save or resolve it before requesting edits.</p>}
+    {context.document.unsaved && !draft && <p className="feedback-notice">Captured from an unsaved draft that has since been saved or discarded.</p>}
+    {draft && !attempt.current && (draftFits
+      ? <label className="feedback-notice feedback-draft"><input type="checkbox" checked={includeDraft} disabled={collecting} onChange={event => setIncludeDraft(event.target.checked)} />Include my unsaved changes, so Pi can see them. They are not on disk, so an edit from Pi can conflict with your draft.</label>
+      : <p className="feedback-notice">Your unsaved changes are over 12 KiB, too large to attach. Pi will only see the file on disk. Save first if Pi needs them.</p>)}
+    {attempt.current?.message.document.unsavedChanges && <p className="feedback-notice">Your unsaved changes were sent with this request.</p>}
     {context.document.url && <p className="feedback-notice">Captured from a live page. Its content may have changed since selection.</p>}
     {stale && <div className="feedback-notice" role="status">This capture may no longer match the open document. This request keeps the earlier context.
       {!attempt.current && !savedNote && <label><input type="checkbox" checked={acknowledgedStale} onChange={e => setAcknowledgedStale(e.target.checked)} />Send the captured version</label>}
@@ -113,7 +123,10 @@ export default function FeedbackComposer({ context, open, targets, targetId, onT
       {onCollect && !attempt.current && <button className={savedNote ? 'primary' : ''} disabled={sending || collecting || collectionBusy} onClick={() => void collect()}>{collecting ? 'Saving…' : savedNote ? 'Save note' : 'Add to review'}</button>}
       {!savedNote && <button className="primary" disabled={(intent === 'edit' && !context.instruction.trim()) || !target?.connected || sending || collecting || !!ack || (!attempt.current && stale && !acknowledgedStale)} onClick={() => void send()}>{sending ? 'Sending…' : ack ? 'Sent' : attempt.current ? 'Retry delivery' : 'Send to Pi'}</button>}
     </div>
-    {ack && <div className="feedback-status" role="status">{ack.status === 'received' ? (ack.delivery === 'queued' ? 'Queued for Pi’s next turn' : 'Received · awaiting Pi acceptance') : 'Pi accepted the request'}. Answers appear in Pi; acceptance does not mean the work is finished.
+    {ack && <div className="feedback-status" role="status">{ack.status === 'settled'
+      ? `Pi finished its turn, which does not mean the request succeeded. Answers are in Pi.${changeCount ? ` ${changeCount} ${changeCount === 1 ? 'change' : 'changes'} to review in open documents.` : ' No open document changed.'}`
+      : `${ack.status === 'received' ? (ack.delivery === 'queued' ? 'Queued for Pi’s next turn' : 'Received · awaiting Pi acceptance') : 'Pi is working on the request'}. Answers appear in Pi.`}
+      {ack.status === 'settled' && changeCount > 0 && <button onClick={onShowChanges}>Show changes</button>}
       {target?.blockId && <button onClick={() => void api.focusAgent(target.id).catch(error => setError(String(error)))}>Show in Rex</button>}
     </div>}
     {(error || targetError) && <div className="feedback-status error" role="alert">{error || targetError}</div>}

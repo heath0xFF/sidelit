@@ -351,7 +351,7 @@ pub(crate) fn validate_note(message: &FeedbackMessage, draft: bool) -> Result<()
     if (!draft && message.instruction.trim().is_empty()) || message.instruction.len() > 8000 {
         return Err("Feedback instruction must be between 1 and 8000 bytes".into());
     }
-    if serde_json::to_vec(&message.document).map_or(true, |bytes| bytes.len() > 6000)
+    if serde_json::to_vec(&message.document).map_or(true, |bytes| bytes.len() > 20000)
         || serde_json::to_vec(&message.selection)
             .map_or(true, |bytes| bytes.len() > if draft { 16000 } else { 8000 })
     {
@@ -385,24 +385,25 @@ pub(crate) fn validate_note(message: &FeedbackMessage, draft: bool) -> Result<()
         keys.iter()
             .all(|key| value.get(key).is_none_or(Value::is_string))
     };
-    if !strings(&message.document, &["path", "diskHash", "capturedAt"])
-        || !strings(
-            &message.selection,
-            &[
-                "selector",
-                "tag",
-                "id",
-                "surrounding",
-                "prefix",
-                "suffix",
-                "anchorText",
-                "locatorConfidence",
-            ],
-        )
-        || message
-            .document
-            .get("revision")
-            .is_some_and(|v| v.as_u64().is_none_or(|n| n > 9_007_199_254_740_991))
+    if !strings(
+        &message.document,
+        &["path", "diskHash", "capturedAt", "unsavedChanges"],
+    ) || !strings(
+        &message.selection,
+        &[
+            "selector",
+            "tag",
+            "id",
+            "surrounding",
+            "prefix",
+            "suffix",
+            "anchorText",
+            "locatorConfidence",
+        ],
+    ) || message
+        .document
+        .get("revision")
+        .is_some_and(|v| v.as_u64().is_none_or(|n| n > 9_007_199_254_740_991))
         || message
             .document
             .get("unsaved")
@@ -611,8 +612,10 @@ fn parse_ack(response: &str, id: &str) -> Result<DeliveryAck, String> {
     let ack: DeliveryAck = serde_json::from_value(value).map_err(|e| e.to_string())?;
     let not_started = ack.status == "failed" && ack.delivery == "none";
     if !not_started
-        && (!matches!(ack.status.as_str(), "received" | "accepted" | "duplicate")
-            || !matches!(ack.delivery.as_str(), "submitted" | "queued" | "consumed"))
+        && (!matches!(
+            ack.status.as_str(),
+            "received" | "accepted" | "duplicate" | "settled"
+        ) || !matches!(ack.delivery.as_str(), "submitted" | "queued" | "consumed"))
     {
         return Err("Unknown Pi acknowledgment status".into());
     }
@@ -736,6 +739,15 @@ mod tests {
             "one"
         )
         .is_err());
+        assert_eq!(
+            parse_ack(
+                "{\"id\":\"one\",\"status\":\"settled\",\"delivery\":\"consumed\"}\n",
+                "one"
+            )
+            .unwrap()
+            .status,
+            "settled"
+        );
         assert!(parse_ack(received, "two").is_err());
         assert!(parse_ack(received.trim(), "one").is_err());
         assert!(parse_ack(&format!("{}\n", "x".repeat(8192)), "one").is_err());
