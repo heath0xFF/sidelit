@@ -8,6 +8,7 @@ import { undo, redo } from "@milkdown/kit/prose/history";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
 import { api } from "./api";
+import { renderMermaidBlock } from "./mermaid-block";
 import { frontmatter, replaceBody } from "./fidelity";
 import type { EditorHistory } from "./history";
 import { elementContext, textContext, type SelectionContext } from "./inspection";
@@ -121,7 +122,7 @@ export default function Rich({
         [Crepe.Feature.ImageBlock]: false,
       },
       featureConfigs: {
-        [Crepe.Feature.CodeMirror]: { theme: { extension: codeHighlight } },
+        [Crepe.Feature.CodeMirror]: { theme: { extension: codeHighlight }, renderPreview: renderMermaidBlock },
       },
     });
     crepe.setReadonly(!editable || inspect);

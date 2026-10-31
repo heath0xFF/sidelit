@@ -54,8 +54,8 @@ export interface AgentTarget {
 }
 export interface DeliveryAck {
   id: string;
-  status: "received" | "accepted" | "duplicate";
-  delivery: "submitted" | "queued" | "consumed";
+  status: "received" | "accepted" | "duplicate" | "failed";
+  delivery: "submitted" | "queued" | "consumed" | "none";
 }
 export interface PreviewAsset {
   kind: "style" | "script" | "data";

@@ -7,8 +7,10 @@ import type { ExtensionAPI, ExtensionContext } from '@earendil-works/pi-coding-a
 import { validFeedback, promptFor, type Feedback } from './protocol';
 
 export type Receipt = { id: string; status: 'received' | 'accepted' | 'duplicate'; delivery: 'submitted' | 'queued' | 'consumed' };
-type Record = { digest: string; receipt: Receipt };
+type Record = { digest: string; receipt: Receipt; sentAt?: number };
 export const registryDirectory = () => `/tmp/sidelit-pi-${process.getuid?.()}`;
+// Long enough for Pi's pre-run checks; a request cannot be called lost while they run.
+export const NOT_STARTED_AFTER_MS = 10_000;
 
 export default function sidelit(pi: ExtensionAPI) {
   let server: ReturnType<typeof createServer> | undefined;
@@ -39,13 +41,25 @@ export default function sidelit(pi: ExtensionAPI) {
     seen.set(id, record);
     pi.appendEntry('sidelit_feedback_receipt', { id, ...record });
   };
+  // sendUserMessage returns nothing and Pi swallows rejections such as missing auth.
+  // Unconsumed, with Pi idle and nothing queued, means the request will never run.
+  const notStarted = (record: Record) => record.receipt.status === 'received' && context.isIdle() && !context.hasPendingMessages()
+    && Date.now() - (record.sentAt ?? 0) >= NOT_STARTED_AFTER_MS;
+  const deliver = (message: Feedback, digest: string) => {
+    const receipt: Receipt = { id: message.id, status: 'received', delivery: context.isIdle() ? 'submitted' : 'queued' };
+    // Record only after sending, so a synchronous failure leaves the ID free to retry.
+    // The API is void: only message_start below proves Pi consumed the instruction.
+    pi.sendUserMessage(promptFor(message), { deliverAs: 'followUp' });
+    saveRecord(message.id, { digest, receipt, sentAt: Date.now() });
+    return receipt;
+  };
   const accept = (value: unknown) => {
     if (!context || !registration) throw new Error('Pi session is closing');
     if (value && typeof value === 'object' && 'op' in value && value.op === 'ping') return { id: (value as { id?: string }).id, status: 'ready', protocol: 1, busy: !context.isIdle(), pid: process.pid };
     if (value && typeof value === 'object' && 'op' in value && value.op === 'status') {
       const record = seen.get(String((value as { id?: string }).id));
       if (!record) throw new Error('No receipt for that message in this Pi session');
-      return record.receipt;
+      return notStarted(record) ? { id: record.receipt.id, status: 'failed', delivery: 'none' } : record.receipt;
     }
     if (!validFeedback(value, registration.projectRoot)) throw new Error('Invalid feedback or different project');
     const message: Feedback = value;
@@ -53,14 +67,11 @@ export default function sidelit(pi: ExtensionAPI) {
     const previous = seen.get(message.id);
     if (previous) {
       if (previous.digest !== digest) throw new Error('Message ID was already used with different content');
+      if (notStarted(previous)) return deliver(message, digest);
       return { ...previous.receipt, status: previous.receipt.status === 'accepted' ? 'duplicate' : 'received' };
     }
     if (seen.size >= 2000) throw new Error('Session feedback limit reached; start a new Pi session');
-    const receipt: Receipt = { id: message.id, status: 'received', delivery: context.isIdle() ? 'submitted' : 'queued' };
-    saveRecord(message.id, { digest, receipt });
-    // The API is void: only message_start below proves Pi consumed the instruction.
-    pi.sendUserMessage(promptFor(message), { deliverAs: 'followUp' });
-    return receipt;
+    return deliver(message, digest);
   };
   const start = async (ctx: ExtensionContext) => {
     await stop(); context = ctx;
@@ -74,8 +85,8 @@ export default function sidelit(pi: ExtensionAPI) {
     registration = { id, socketPath: join(directory, id + '.sock'), projectRoot: await realpath(ctx.cwd), sessionId: process.env.REX_SESSION, blockId: process.env.REX_BLOCK, label: `Pi · ${basename(ctx.cwd)} · ${session.slice(0, 8)}`, process: 'pi', pid: process.pid, piSessionId: session, busy: !ctx.isIdle() };
     for (const entry of ctx.sessionManager.getEntries()) {
       if (entry.type === 'custom' && entry.customType === 'sidelit_feedback_receipt') {
-        const data = entry.data as { id?: string; digest?: string; receipt?: Receipt };
-        if (data?.id && data.digest && data.receipt) seen.set(data.id, { digest: data.digest, receipt: data.receipt });
+        const data = entry.data as { id?: string; digest?: string; receipt?: Receipt; sentAt?: number };
+        if (data?.id && data.digest && data.receipt) seen.set(data.id, { digest: data.digest, receipt: data.receipt, sentAt: data.sentAt });
       }
     }
     server = createServer(socket => {

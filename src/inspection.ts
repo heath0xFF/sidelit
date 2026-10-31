@@ -149,6 +149,23 @@ export function textContext(
   };
 }
 
+export function sourceSelection(source: string, from: number, to: number, rect?: SelectionRect): SelectionContext | undefined {
+  const raw = source.slice(from, to), text = raw.slice(0, 1200);
+  if (!text.trim()) return undefined;
+  return {
+    type: "text",
+    text,
+    sourceLine: source.slice(0, from).split("\n").length,
+    surrounding: bounded(source.slice(Math.max(0, from - 800), to + 800), 1600),
+    locatorConfidence: "exact",
+    truncated: raw.length > 1200,
+    prefix: source.slice(Math.max(0, from - 48), from),
+    suffix: source.slice(to, to + 48),
+    anchorText: text,
+    rect,
+  };
+}
+
 export function selectionSummary(selection: SelectionContext) {
   if (selection.type === "element") return selection.selector ?? selection.tag ?? "element";
   if (selection.type === "document") return "current document";

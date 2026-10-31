@@ -213,8 +213,8 @@ describe("review and recovery", () => {
     store.restore({ path: "/a.md", text: "older checkpoint", disk: snap("base"), mode: "source" });
     expect(store.get("/a.md")!.text).toBe("recovered draft");
   });
-  it("keeps Source selected after unsupported syntax is removed", () => {
-    const { store } = setup("Price $5");
+  it("keeps Source selected after the reason for it is removed", () => {
+    const { store } = setup("x".repeat(300_000));
     expect(store.get("/a.md")!.mode).toBe("source");
     store.edit("/a.md", "Price 5");
     expect(store.get("/a.md")!.mode).toBe("source");
@@ -251,7 +251,7 @@ describe("frontmatter", () => {
     const original = "---\ntitle: Test\n---";
     expect(replaceBody(original, "Body\n")).toBe(original + "\nBody\n");
     expect(sourceReason("---\ntitle: Test\n")).toContain("Unclosed");
-    expect(sourceReason(original + "\n<script>bad</script>\n")).toBeTruthy();
+    expect(sourceReason(original + "\n```js title=a\nx\n```\n")).toContain("metadata");
     expect(frontmatter("plain text").body).toBe("plain text");
     expect(sourceReason("x".repeat(300_000))).toContain("Large");
   });
@@ -259,133 +259,67 @@ describe("frontmatter", () => {
 
 describe("fidelity gate", () => {
   const comments = '# Product\r\n\r\n<!-- impeccable:product-schema 1 -->\r\n\r\nRead <!-- hidden $ metadata -->this.\r\n';
-  it('previews comments read-only and preserves them across modes, saves, and conflicts', async () => {
-    const { store, disk } = setup(comments);
-    expect(sourceReason(comments)).toBeTruthy();
-    expect(sourceReason(comments, true)).toBeUndefined();
-    expect(store.get('/a.md')).toMatchObject({ mode: 'rendered', previewOnly: true, revision: 0 });
-    store.setMode('/a.md', 'source');
-    store.setMode('/a.md', 'rendered');
-    expect(await store.save('/a.md')).toBe(true);
-    expect(store.get('/a.md')).toMatchObject({ text: comments, disk: snap(comments), revision: 0, previewOnly: true });
-    store.setMode('/a.md', 'source');
-    const draft = comments.replace('Read', 'Review');
-    store.edit('/a.md', draft);
-    store.setMode('/a.md', 'rendered');
-    disk('# External');
-    await store.refresh('/a.md');
-    expect(await store.save('/a.md')).toBe(false);
-    expect(store.get('/a.md')).toMatchObject({ text: draft, previewOnly: true, pending: { snapshot: snap('# External') } });
-    expect(dirty(store.get('/a.md')!)).toBe(true);
-  });
-  it('rechecks comment previews after disk changes and recovery', async () => {
-    const { store, disk } = setup('# Plain');
-    disk(comments);
-    await store.refresh('/a.md');
-    expect(store.get('/a.md')).toMatchObject({ mode: 'rendered', previewOnly: true });
-    disk('# Plain again');
-    await store.refresh('/a.md');
-    expect(store.get('/a.md')).toMatchObject({ mode: 'rendered', previewOnly: false });
-    store.remove('/a.md');
-    store.restore({ path: '/a.md', disk: snap('# Plain'), text: comments, mode: 'rendered' });
-    expect(store.get('/a.md')).toMatchObject({ text: comments, mode: 'rendered', previewOnly: true });
-  });
-  it.each([
-    '<!-- one --><!-- two -->',
-    '<!-- multiline\n$hidden$ <script>hidden()</script>\n-->\n\n# Visible',
-    '> <!-- quote -->\n\n- Item <!-- inline -->',
-  ])('allows complete comments only in read-only preview: %s', text => {
-    expect(sourceReason(text)).toBeTruthy();
-    expect(sourceReason(text, true)).toBeUndefined();
-  });
-  it.each([
-    '<!-- unclosed',
-    '<!-- safe --><script>bad()</script><!-- safe -->',
-    '<!-- safe -->\n<div>HTML</div>',
-    '<!-- safe -->\n\n$x$',
-    '<!-- safe -->\n\n[x](javascript:alert)',
-    '<!-- safe -->\n\n[x][ref]\n\n[ref]: https://example.com',
-  ])('keeps other unsupported syntax out of comment previews: %s', text => {
-    expect(sourceReason(text, true)).toBeTruthy();
-    expect(setup(text).store.get('/a.md')).toMatchObject({ mode: 'source', previewOnly: false });
-  });
   const diagram = "---\r\ntitle: Keep\r\n---\r\n\r\n# Plan\r\n\r\n```mermaid\r\nflowchart LR\r\n A --> B\r\n```\r\n";
-  it("previews Mermaid read-only without changing bytes, drafts, or save baselines", async () => {
+  it.each([
+    comments, diagram, '<!-- unclosed', '<script>inert()</script>', '<details><summary>More</summary>Hidden</details>', 'one<br>two',
+    'Budget is $500.', 'Set $HOME first.', '$$x$$', 'Use \\[optional\\] args', ':::note\nHi\n:::', 'Claim[^1]\n\n[^1]: Source',
+    '[x][ref]\n\n[ref]: https://example.com', '![x][ref]\n\n[ref]: a.png', '```sh\necho $HOME\n```', '```html\n<script>example</script>\n```',
+  ])('opens in the rich editor: %s', text => {
+    expect(sourceReason(text)).toBeUndefined();
+    expect(setup(text).store.get('/a.md')).toMatchObject({ mode: 'rendered', reason: undefined, revision: 0, text });
+  });
+  it.each([
+    ['fence metadata', '```js title="a"\nx\n```', 'metadata'],
+    ['Mermaid metadata', '```mermaid title=Keep\ngraph LR; A-->B\n```', 'metadata'],
+    ['a dangerous link', '[x](javascript:alert)', 'URL scheme'],
+    ['a dangerous image', '![x](file:///etc/passwd)', 'URL scheme'],
+    ['a byte-order mark', '\uFEFF# Marked', 'byte-order'],
+    ['unclosed frontmatter', '---\ntitle: Open\n\n# Body', 'Unclosed'],
+    ['a large document', 'x'.repeat(300_000), 'Large'],
+  ])('keeps %s in Source', (_name, text, reason) => {
+    expect(sourceReason(text)).toContain(reason);
+    expect(setup(text).store.get('/a.md')).toMatchObject({ mode: 'source' });
+  });
+  it('keeps bytes and drafts across modes, saves, and conflicts for syntax Crepe carries', async () => {
     const { store, disk } = setup(diagram);
-    expect(store.get('/a.md')).toMatchObject({ mode: 'rendered', previewOnly: true, revision: 0 });
-    expect(sourceReason(diagram)).toBeTruthy();
-    expect(sourceReason(diagram, true)).toBeUndefined();
     store.setMode('/a.md', 'source');
     store.setMode('/a.md', 'rendered');
     expect(await store.save('/a.md')).toBe(true);
-    expect(store.get('/a.md')).toMatchObject({ text: diagram, disk: snap(diagram), revision: 0, previewOnly: true });
-    store.setMode('/a.md', 'source');
+    expect(store.get('/a.md')).toMatchObject({ text: diagram, disk: snap(diagram), revision: 0 });
     store.edit('/a.md', diagram.replace('A --> B', 'A --> C'));
-    store.setMode('/a.md', 'rendered');
     disk(diagram.replace('A --> B', 'A --> D'));
     await store.refresh('/a.md');
     expect(store.get('/a.md')!.text).toContain('A --> C');
     expect(store.get('/a.md')!.pending?.snapshot?.text).toContain('A --> D');
     expect(dirty(store.get('/a.md')!)).toBe(true);
   });
-  it.each(['<script>bad()</script>', '$$x$$', '[x][ref]\n\n[ref]: https://example.com', '```mermaid title=Keep\ngraph LR; A-->B\n```'])('keeps the other fidelity checks with Mermaid: %s', extra => {
-    const { store } = setup(diagram + '\r\n' + extra);
-    expect(store.get('/a.md')).toMatchObject({ mode: 'source', previewOnly: false });
-    expect(sourceReason(diagram + extra, true)).toBeTruthy();
-  });
-  it('rechecks preview-only mode on clean disk refresh and explicit mode entry', async () => {
+  it('rechecks the gate on clean disk refresh and explicit mode entry', async () => {
     const { store, disk } = setup('# Plain');
-    disk(diagram);
+    const blocked = '```js title="a"\nx\n```';
+    disk(blocked);
     await store.refresh('/a.md');
-    expect(store.get('/a.md')).toMatchObject({ mode: 'rendered', previewOnly: true });
+    expect(store.get('/a.md')).toMatchObject({ mode: 'source' });
     disk('# Plain again');
     await store.refresh('/a.md');
-    expect(store.get('/a.md')).toMatchObject({ mode: 'rendered', previewOnly: false });
-    store.setMode('/a.md', 'source');
-    store.edit('/a.md', diagram);
     expect(store.get('/a.md')!.mode).toBe('source');
     store.setMode('/a.md', 'rendered');
-    expect(store.get('/a.md')!.previewOnly).toBe(true);
+    expect(store.get('/a.md')).toMatchObject({ mode: 'rendered', reason: undefined });
+    store.setMode('/a.md', 'source');
+    store.edit('/a.md', blocked);
+    expect(store.get('/a.md')!.mode).toBe('source');
+    store.setMode('/a.md', 'rendered');
+    expect(store.get('/a.md')).toMatchObject({ mode: 'source', reason: expect.stringContaining('metadata') });
   });
   it.each([
-    "---\ntitle: Unclosed\n",
-    "<div>hello</div>",
-    "[x][ref]\n\n[ref]: https://example.org",
-    "```mermaid\ngraph LR; A-->B\n```",
-    "$$x$$",
-    "`$HOME` then $x$",
-    "```sh\necho $HOME\n```\n\n\\(x\\)",
-    "`example`\n\n\\[x\\]",
-    "`example`\n\n:::note\nContent\n:::",
-    "`example`\n\n[^note]: Footnote",
-    "```html\n<script>example</script>\n```\n\n<script>real</script>",
-    "```sh title=example\necho $HOME\n```",
-    "[x](javascript:alert)",
-  ])("routes unsupported syntax to source: %s", (text) =>
-    expect(sourceReason(text)).toBeTruthy(),
-  );
-  it.each([
-    "```sh\necho \"$HOME\" \"$PWD\"\nexport PATH=\"$HOME/.local/bin:$PATH\"\n```",
-    "Use `$HOME`, `\\(x\\)`, `\\[x\\]`, `[^note]`, and `:::note` literally.",
-    "~~~text\n$x$\n\\(x\\)\n:::note\n[^note]: example\n~~~",
-    "    echo $HOME\n    \\(x\\)\n    :::note\n",
-    "> ```sh\n> echo $HOME\n> ```",
-    "- Example:\n\n  ```sh\n  echo $HOME\n  ```",
-    "```html\n<script>example</script>\n```",
-    "`example`:::literal text",
-  ])("keeps literal code renderable: %s", (text) =>
-    expect(sourceReason(text)).toBeUndefined(),
-  );
-  it.each([
-    ["README", readme, true],
-    ["product record", product, true],
-    ["user guide", userGuide, false],
-  ] as const)("opens the %s in its correct rendered view without changing bytes", async (_name, text, previewOnly) => {
+    ["README", readme],
+    ["product record", product],
+    ["user guide", userGuide],
+  ] as const)("opens the %s in the rich editor without changing bytes", async (_name, text) => {
     const { store } = setup(text);
-    expect(store.get("/a.md")).toMatchObject({ mode: "rendered", previewOnly });
+    expect(store.get("/a.md")).toMatchObject({ mode: "rendered" });
     store.setMode("/a.md", "source");
     store.setMode("/a.md", "rendered");
-    expect(store.get("/a.md")).toMatchObject({ mode: "rendered", previewOnly });
+    expect(store.get("/a.md")).toMatchObject({ mode: "rendered" });
     await store.save("/a.md");
     expect(store.get("/a.md")!.text).toBe(text);
     expect(store.get("/a.md")!.disk.text).toBe(text);

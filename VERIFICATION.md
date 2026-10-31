@@ -1,5 +1,47 @@
 # Verification
 
+## v0.5.0 rich editor for all Markdown
+
+The read-only Markdown preview is gone. Every Markdown file opens in Crepe unless a test
+showed Crepe would lose something: fence metadata, plus byte-order marks, unclosed
+frontmatter, non-web link schemes, and files over 256 KiB go to Source. Mermaid draws in
+Crepe code blocks through Pele, which now runs in the privileged webview with links and images off,
+Crepe's DOMPurify sanitizer on its output, and the app CSP blocking scripts. MDX shows Monaco beside its live
+sandboxed render. Source selections now reach the Explain/Review/Edit actions with an exact line.
+
+- `tests/crepe-roundtrip.test.ts` runs real Crepe under happy-dom and checks each kept syntax
+  byte for byte, both untouched and after a real document transaction elsewhere.
+- `scripts/desktop-smoke.py` covers diagrams in the rich editor, invalid diagrams and their toggle, CRLF no-op save
+  and rich edits, comments and raw HTML staying inert and byte-exact, the MDX split with live
+  updates, the last good render and recovery, and Source selections reaching Explain.
+- `scripts/updater-smoke.py` passed: signed install, real bundle replacement, restart, and no
+  same-version update.
+- On an AeroSpace tiling desktop the companion suite needs `SIDELIT_TEST_FLOAT=1`, and even then
+  its wait for the sandbox bridge occasionally times out. Rerun before treating that as a failure.
+
+## v0.5.0 project review fixes
+
+The Pi bridge records a request only after sending and reports `failed` when Pi is idle,
+has nothing queued, and has not consumed it after 10 seconds; retries keep the same ID,
+target, and payload. Service commands no longer hold the shared lock across disk access,
+and saves have their own lock. Stylesheet imports keep `$` sequences literal. DOMPurify and
+KaTeX are overridden to patched versions, and CI runs on pushes and pull requests.
+
+- TypeScript, Clippy with `-D warnings`, Rust format, all frontend/bridge and Rust tests,
+  and `pnpm audit --prod` (no known vulnerabilities) passed.
+- Packaged desktop, feedback, and review smoke tests passed. The desktop test covers
+  `$`, inert raw HTML, and no document script execution.
+- The real-Pi companion test passed four times on the final bundle with `SIDELIT_TEST_FLOAT=1`. Without it, tiled
+  AeroSpace windows failed three different ways, and unmodified `9c0fffc` failed the same way.
+- Real Pi with no model configured reported `received`, then `failed` at about 11 seconds,
+  and a retry re-sent the request. That run used the socket directly, not the composer UI;
+  the composer and batch retry paths are covered by unit tests.
+
+Limits: the lock change has no direct regression test and was not tried on a slow or
+hung disk. Monaco and Crepe are running with
+override versions they did not pin; the packaged Monaco checks passed. Math and `:::` blocks
+show as plain text in the rich editor. VoiceOver was not checked.
+
 ## v0.4.2 accents and welcome icon
 
 The welcome screen uses the supplied light/dark SVG icons. Warm amber replaces

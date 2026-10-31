@@ -371,15 +371,16 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     time.sleep(.3)
     screenshot('light-narrow.png')
     launch('Research.markdown', cwd=folder)
-    wait(lambda: js('return document.querySelector(".fidelity-note")?.textContent.includes("Source mode")'), 'fidelity fallback')
+    wait(lambda: js('return !!document.querySelector(".ProseMirror")') and 'mixes math, Mermaid' in body(), 'mixed syntax opens in the rich editor')
     fixture = folder / 'Research.markdown'
     initial = fixture.read_bytes()
     click('Save')
     time.sleep(.4)
     assert fixture.read_bytes() == initial
-    # Inject the probe into test publications, not into shipping preview code.
+    # Inject the probe into test publications, not into shipping MDX preview code.
     probe = '''addEventListener('message',e=>{if(e.data?.source!=='mermaid-test')return;
       if(e.data.select){const svg=document.querySelector('.sidelit-diagram svg'),r=document.createRange();r.selectNodeContents(svg);getSelection().removeAllRanges();getSelection().addRange(r);svg.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}))}
+      if(e.data.link)document.querySelector('a[href]').click();
       if(e.data.escape)document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
       if(Number.isInteger(e.data.scroll)){document.dispatchEvent(new WheelEvent('wheel'));document.querySelectorAll('.sidelit-diagram')[e.data.scroll]?.scrollIntoView()}
       let parentBlocked=false;try{void parent.document.body}catch{parentBlocked=true}
@@ -401,85 +402,125 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
         window.__mermaidReady=true})''', probe)
     wait(lambda: js('return window.__mermaidReady'), 'diagram test transport')
     try:
-        diagram_bytes, diagram_stamp = diagrams.read_bytes(), diagrams.stat().st_mtime_ns
-        launch(diagrams)
-        wait(lambda: 'This preview is read-only' in body(), 'read-only diagram preview')
-        assert not js('return !!document.querySelector(".ProseMirror,button[aria-label=\\"Edit rendered Markdown\\"]")')
-        assert js('return document.querySelector(".preview-frame").getAttribute("sandbox")') == 'allow-scripts'
-        def diagram_metrics():
+        def frame_metrics():
             js('document.querySelector(".preview-frame")?.contentWindow.postMessage({source:"mermaid-test"},"*")')
             return js('return window.__mermaidMetrics')
-        rendered = wait(lambda: (m if (m := diagram_metrics()) and m['diagrams'] == 2 and m['errors'] == 1 else None), 'two diagrams and invalid-source fallback')
-        assert rendered['parentBlocked'] and rendered['ipc'] == 'undefined', rendered
-        assert 'not a diagram' in rendered['text'] and 'Use Source' in rendered['text'], rendered
-        address = rendered['url']
+        def type_rich(text):
+            edit_rendered()
+            js('const el=document.querySelector(".ProseMirror p");el.focus();const r=document.createRange();r.selectNodeContents(el);getSelection().removeAllRanges();getSelection().addRange(r);document.execCommand("insertText",false,arguments[0])', text)
+            wait(lambda: js('return !!document.querySelector(".tab.active .dirty-dot")'), 'rich draft')
+            js('const b=[...document.querySelectorAll("button")].find(b=>b.getAttribute("aria-label")==="Edit rendered Markdown");if(b?.getAttribute("aria-pressed")==="true")b.click()')
+        # Mermaid draws in the rich editor, and a failed block keeps the document readable.
+        diagram_bytes, diagram_stamp = diagrams.read_bytes(), diagrams.stat().st_mtime_ns
+        launch(diagrams)
+        wait(lambda: js('return document.querySelectorAll(".ProseMirror svg").length >= 2'), 'diagrams in the rich editor')
+        # Crepe mounts code blocks only near the viewport.
+        js('[...document.querySelectorAll(".milkdown-code-block")].at(-1).scrollIntoView({block:"center"})')
+        wait(lambda: js('return document.querySelector(".ProseMirror").textContent.includes("Diagram unavailable")'), 'invalid diagram message')
+        # A failed diagram's own toggle reveals its code without changing the draft.
+        js('[...document.querySelectorAll(".milkdown-code-block")].at(-1).querySelector(".preview-toggle-button").click()')
+        wait(lambda: js('const c=[...document.querySelectorAll(".milkdown-code-block")].at(-1).querySelector(".cm-content");return c&&c.getBoundingClientRect().height>0&&c.textContent.includes("not a diagram")'), 'invalid diagram code from its toggle')
+        assert not js('return !!document.querySelector(".tab.active .dirty-dot")')
+        screenshot('mermaid-toggle.png')
+        assert 'Pi' in js('return document.querySelector(".ProseMirror svg").parentElement.textContent + [...document.querySelectorAll(".ProseMirror svg")].map(s=>s.textContent).join(" ")')
+        assert not js('return !!document.querySelector(".ProseMirror script,.ProseMirror svg a,.ProseMirror svg image,.ProseMirror svg foreignObject")')
+        assert not js('return !!document.querySelector(".tab.active .dirty-dot")'), 'drawing diagrams must not change the draft'
         set_theme('dark')
-        dark_diagram = wait(lambda: (m if (m := diagram_metrics()) and m['theme'] == 'dark' and m['color'] == 'rgb(213, 214, 223)' else None), 'dark diagrams')
         request(f'/session/{session}/window/rect', {'width': 1180, 'height': 820})
+        time.sleep(.3)
         screenshot('mermaid-dark.png')
-        js('document.querySelector(".preview-frame").contentWindow.postMessage({source:"mermaid-test",select:true},"*")')
-        wait(lambda: js('return !!document.querySelector(".selection-actions")'), 'diagram selection actions')
-        click('Explain')
-        wait(lambda: (m := diagram_metrics()) and m['highlights'] > 0, 'diagram selection highlight')
-        js('document.querySelector(".feedback-panel textarea").dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}))')
-        wait(lambda: js('return document.querySelector(".feedback-panel").hidden') and (m := diagram_metrics()) and m['highlights'] == 0 and not m['selectedText'], 'Escape clears sandbox highlight and native selection')
-        assert js('return document.querySelector(".feedback-button").textContent') == 'Unsent draft'
-        time.sleep(.2)
-        screenshot('mermaid-hidden-draft.png')
-        js('document.querySelector(".feedback-button").click()')
-        wait(lambda: (m := diagram_metrics()) and m['highlights'] > 0, 'resumed diagram highlight')
-        click('Reveal selection')
-        wait(lambda: js('return document.querySelector(".feedback-panel").hidden') and (m := diagram_metrics()) and m['highlights'] > 0, 'explicit diagram reveal')
-        js('document.querySelector(".preview-frame").contentWindow.postMessage({source:"mermaid-test",escape:true},"*")')
-        wait(lambda: (m := diagram_metrics()) and m['highlights'] == 0 and not m['selectedText'], 'Escape inside sandbox clears selection and highlight')
-        js('document.querySelector(".feedback-button").click()')
-        click('Discard request')
-        assert js('return document.querySelector(".feedback-button").textContent') == 'Feedback'
+        dark_fill = js('const t=document.querySelector(".ProseMirror svg text");return t&&getComputedStyle(t).fill')
         set_theme('light')
-        set_size(24)
-        light_diagram = wait(lambda: (m if (m := diagram_metrics()) and m['theme'] == 'light' and m['font'] == '24px' and m['labelSize'] != dark_diagram['labelSize'] and m['color'] != dark_diagram['color'] else None), 'live diagram theme and font size')
-        assert light_diagram['url'] == address and light_diagram['color'] != dark_diagram['color'], light_diagram
+        wait(lambda: js('const t=document.querySelector(".ProseMirror svg text");return t&&getComputedStyle(t).fill') != dark_fill, 'diagram colors follow the theme')
         request(f'/session/{session}/window/rect', {'width': 720, 'height': 630})
-        js('document.querySelector(".preview-frame").contentWindow.postMessage({source:"mermaid-test",scroll:0},"*")')
-        wait(lambda: (m := diagram_metrics()) and m['width'] <= m['viewport'] + 1 and abs(m['diagramTop']) <= 2, 'narrow diagram without page overflow')
+        time.sleep(.3)
         screenshot('mermaid-light-narrow.png')
-        js('document.querySelector(".preview-frame").contentWindow.postMessage({source:"mermaid-test",scroll:2},"*")')
-        wait(lambda: (m := diagram_metrics()) and m['errorTop'] is not None and 0 <= m['errorTop'] < 300, 'visible invalid diagram source')
-        screenshot('mermaid-invalid.png')
-        set_size(16)
+        assert js('return document.querySelector(".rich-editor").scrollWidth <= document.querySelector(".rich-editor").clientWidth + 1'), 'narrow diagrams must not overflow the page'
+        request(f'/session/{session}/window/rect', {'width': 1180, 'height': 820})
         click('Source')
         wait(lambda: js('return !!document.querySelector(".monaco-editor")'), 'diagram source editor')
         assert source_text().replace('\r\n', '\n') == diagram_bytes.decode().replace('\r\n', '\n')
         click('Rendered')
-        wait(lambda: 'This preview is read-only' in body(), 'return to diagram preview')
+        wait(lambda: js('return document.querySelectorAll(".ProseMirror svg").length >= 2'), 'return to drawn diagrams')
         click('Save')
         time.sleep(.2)
         assert diagrams.read_bytes() == diagram_bytes and diagrams.stat().st_mtime_ns == diagram_stamp
-        assert not js('return !!document.querySelector(".tab.active .dirty-dot")')
+        type_rich('Edited beside the diagrams.')
+        click('Save')
+        wait(lambda: b'Edited beside the diagrams.' in diagrams.read_bytes(), 'rich edit saved beside diagrams')
+        saved = diagrams.read_bytes()
+        for block in re.findall(rb'```mermaid.*?```', diagram_bytes, re.S):
+            assert block in saved, block
+        assert b'\r\n' in saved and b'\n' not in saved.replace(b'\r\n', b''), 'CRLF must survive a rich edit'
+
+        # Comments stay hidden and raw HTML stays inert, while real edits keep both byte for byte.
         product = folder / 'PRODUCT.md'
-        product.write_bytes(b'# Product\r\n\r\n<!-- impeccable:product-schema 1 -->\r\n\r\nRead <!-- hidden $metadata -->this product record.\r\n')
+        product.write_bytes(b'# Product\r\n\r\nFirst paragraph.\r\n\r\n<!-- impeccable:product-schema 1 -->\r\n\r\nRead <!-- hidden $metadata -->this product record.\r\n')
         product_bytes, product_stamp = product.read_bytes(), product.stat().st_mtime_ns
-        js('window.__mermaidMetrics=null')
         launch(product)
-        wait(lambda: 'This preview is read-only' in body(), 'read-only comment preview')
-        rendered = wait(lambda: (m if (m := diagram_metrics()) and 'Read this product record.' in m['text'] else None), 'visible prose without comments')
-        assert 'impeccable' not in rendered['text'] and 'metadata' not in rendered['text'], rendered
-        assert rendered['parentBlocked'] and rendered['ipc'] == 'undefined', rendered
-        assert not js('return !!document.querySelector(".ProseMirror,button[aria-label=\\"Edit rendered Markdown\\"]")')
-        screenshot('comments-light.png')
-        set_theme('dark')
-        request(f'/session/{session}/window/rect', {'width': 1180, 'height': 820})
-        wait(lambda: (m := diagram_metrics()) and m['theme'] == 'dark', 'dark comment preview')
-        screenshot('comments-dark.png')
-        click('Source')
-        wait(lambda: js('return !!document.querySelector(".monaco-editor")'), 'comment source editor')
-        assert source_text().replace('\r\n', '\n') == product_bytes.decode().replace('\r\n', '\n')
-        click('Rendered')
-        wait(lambda: 'This preview is read-only' in body(), 'return to comment preview')
+        wait(lambda: 'this product record.' in body(), 'comment document in the rich editor')
+        assert 'impeccable' not in body() and 'metadata' not in body()
         click('Save')
         time.sleep(.2)
         assert product.read_bytes() == product_bytes and product.stat().st_mtime_ns == product_stamp
-        assert not js('return !!document.querySelector(".tab.active .dirty-dot")')
+        type_rich('Edited first paragraph.')
+        click('Save')
+        wait(lambda: b'Edited first paragraph.' in product.read_bytes(), 'rich edit saved beside comments')
+        assert b'<!-- impeccable:product-schema 1 -->' in product.read_bytes() and b'<!-- hidden $metadata -->' in product.read_bytes()
+        reading = folder / 'Reading.md'
+        reading.write_bytes(b'Budget is $500.\n\n<details open><summary>More</summary>Inner text</details>\n\n<img src=x onerror="document.body.dataset.bad=1">\n\n<script>document.body.dataset.bad=1</script>\n\nClaim[^1]\n\n[^1]: Source note\n')
+        launch(reading)
+        wait(lambda: js('return document.querySelector(".ProseMirror")?.textContent.includes("Budget is $500.")'), 'dollar signs and raw HTML in the rich editor')
+        time.sleep(.3)
+        assert js('return !document.body.dataset.bad && !document.querySelector(".ProseMirror img:not(.ProseMirror-separator),.ProseMirror script,.ProseMirror details")'), 'raw HTML must stay inert in the main window'
+        screenshot('raw-html-rich.png')
+        type_rich('Budget is $600.')
+        click('Save')
+        wait(lambda: b'Budget is $600.' in reading.read_bytes(), 'rich edit saved beside raw HTML')
+        assert reading.read_bytes().split(b'\n', 1)[1] == b'\n<details open><summary>More</summary>Inner text</details>\n\n<img src=x onerror="document.body.dataset.bad=1">\n\n<script>document.body.dataset.bad=1</script>\n\nClaim[^1]\n\n[^1]: Source note\n', reading.read_bytes()
+        assert not js('return !!document.body.dataset.bad')
+
+        # MDX edits as source beside a live render, surviving syntax errors while typing.
+        live = folder / 'Live.mdx'
+        live.write_text('# First render\n\nSome *live* text.\n')
+        live_stamp = live.stat().st_mtime_ns
+        js('window.__mermaidMetrics=null')
+        launch(live)
+        wait(lambda: js('return !!document.querySelector(".mdx-split .monaco-editor") && !!document.querySelector(".mdx-split .preview-frame")'), 'MDX split view')
+        wait(lambda: (m := frame_metrics()) and 'First render' in m['text'], 'first MDX render')
+        assert frame_metrics()['parentBlocked'] and frame_metrics()['ipc'] == 'undefined'
+        assert js('return document.querySelector(".mdx-split .preview-frame").getAttribute("sandbox")') == 'allow-scripts'
+        assert not js('return !!document.querySelector(".tab.active .dirty-dot")') and live.stat().st_mtime_ns == live_stamp
+        screenshot('mdx-split.png')
+        source_edit('# Second render\n\nSome *live* text.\n')
+        wait(lambda: (m := frame_metrics()) and 'Second render' in m['text'], 'MDX updates while typing')
+        assert live.read_text().startswith('# First render'), 'typing must not write the file'
+        source_edit('# Second render\n\n<Broken\n')
+        wait(lambda: 'Showing the last good render' in body(), 'syntax error keeps the last render')
+        assert 'Second render' in frame_metrics()['text']
+        screenshot('mdx-split-error.png')
+        source_edit('# Third render\n')
+        wait(lambda: (m := frame_metrics()) and 'Third render' in m['text'] and 'Showing the last good render' not in body(), 'MDX recovers from the error')
+        click('Save')
+        wait(lambda: live.read_text() == '# Third render\n', 'MDX saved from the split view')
+        request(f'/session/{session}/window/rect', {'width': 720, 'height': 630})
+        time.sleep(.3)
+        screenshot('mdx-split-narrow.png')
+        request(f'/session/{session}/window/rect', {'width': 1180, 'height': 820})
+
+        # Source selections reach Pi like rendered ones, with their exact line.
+        def select_source(line, start, end):
+            js(source_editor() + 'editor.setSelection({startLineNumber:arguments[0],startColumn:arguments[1],endLineNumber:arguments[0],endColumn:arguments[2]});document.querySelector(".source-editor").dispatchEvent(new MouseEvent("mouseup",{bubbles:true}))', line, start, end)
+        select_source(1, 3, 8)
+        wait(lambda: js('return !!document.querySelector(".selection-actions")'), 'selection actions in MDX source')
+        js(source_editor() + 'editor.setPosition({lineNumber:1,column:1});document.querySelector(".source-editor").dispatchEvent(new MouseEvent("mouseup",{bubbles:true}))')
+        wait(lambda: not js('return !!document.querySelector(".selection-actions")'), 'collapsing a source selection clears its actions')
+        select_source(1, 3, 8)
+        wait(lambda: js('return !!document.querySelector(".selection-actions")'), 'selection actions again')
+        click('Explain')
+        wait(lambda: js('return !document.querySelector(".feedback-panel").hidden') and 'Third' in js('return document.querySelector(".feedback-excerpt").textContent'), 'Explain captures the source selection')
+        js('document.querySelector(".feedback-panel textarea").dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}))')
+        wait(lambda: js('return document.querySelector(".feedback-panel").hidden'), 'Escape hides the request')
     finally:
         js('window.__mermaidApi.publishPreview=window.__mermaidPublish;removeEventListener("message",window.__mermaidListener)')
     def rich_edit(text):
@@ -494,13 +535,13 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     readme_before = readme.read_bytes()
     readme_stamp = readme.stat().st_mtime_ns
     launch(readme)
-    wait(lambda: js('return !!document.querySelector(".preview-frame")') and 'This preview is read-only' in body(), 'project README diagram preview')
+    wait(lambda: js('return document.querySelectorAll(".ProseMirror svg").length >= 1'), 'project README diagram in the rich editor')
     assert not js('return !!document.querySelector(".tab.active .dirty-dot")')
     click('Source')
     wait(lambda: js('return !!document.querySelector(".monaco-editor")'), 'README source')
     assert source_text() == readme_before.decode()
     click('Rendered')
-    wait(lambda: js('return !!document.querySelector(".preview-frame")'), 'README preview again')
+    wait(lambda: js('return document.querySelectorAll(".ProseMirror svg").length >= 1'), 'README diagram again')
     click('Save')
     time.sleep(.2)
     assert readme.read_bytes() == readme_before and readme.stat().st_mtime_ns == readme_stamp
@@ -554,7 +595,9 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     money = folder / 'money.md'
     money.write_text('Price $5\n')
     launch(money)
-    wait(lambda: js('return !!document.querySelector(".monaco-editor")'), 'automatic Source')
+    wait(lambda: js('return document.querySelector(".ProseMirror")?.textContent.includes("Price $5")'), 'dollar sign opens in the rich editor')
+    click('Source')
+    wait(lambda: js('return !!document.querySelector(".monaco-editor")'), 'explicit Source')
     source_edit('Price 5\n')
     time.sleep(.2)
     assert js('return !!document.querySelector(".monaco-editor") && !document.querySelector(".ProseMirror")'), 'Source must remain selected'
@@ -724,7 +767,7 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     wait(lambda: not js('return !!document.querySelector(".tab.active .dirty-dot")'), 'checkpoint test discarded')
     errors = errors_before_crash + js('return __errors')
     assert errors == [], errors
-    report = {'handoffSeconds': timing, 'editorReadySeconds': ready_seconds, 'warmHandoffSeconds': warm, 'workers': workers_before_crash + js('return __workers'), 'errors': errors, 'checks': 'HTML comment read-only preview and byte preservation; Mermaid sandbox, source fallback, CRLF no-op save, themes, font size and narrow layout; Crepe input; Monaco input; 80% rendered column and narrow gutter; keyboard/menu undo and redo in both editors, code blocks, and search inputs; disk reload history reset; undo/redo disk adoption; read-only history guards; CRLF; no-op save; mode/tab switches; clean refresh; conflict/diff; discard/cancel; rename; delete/recreate; repeated CLI; Unicode/caller cwd; local image and alt fidelity; project README preview/mode/no-op save; user guide rich editing; literal code preserved and HTML examples inert; frontmatter; dirty close/quit cancel; save on close; task/numbered/nested/wrapped list alignment at 12–28px; local fonts; One themes; system preference; live sizing without editor remounts; opaque frontmatter rich editing; sticky Source; scoped Quick Open; background close selection; editable diff and keyboard change acceptance; stale merged-save rejection; clean change review; New/Save As UI (native selection simulated); Save As cancel/failure; recovery checkpoint, process crash, restart, conflict-safe restore (native approval simulated), and deletion'}
+    report = {'handoffSeconds': timing, 'editorReadySeconds': ready_seconds, 'warmHandoffSeconds': warm, 'workers': workers_before_crash + js('return __workers'), 'errors': errors, 'checks': 'Comments and raw HTML in the rich editor with byte preservation; Mermaid in the rich editor, invalid diagrams, CRLF no-op save, themes and narrow layout; MDX split with live render, last good render and recovery; Source selection actions; Crepe input; Monaco input; 80% rendered column and narrow gutter; keyboard/menu undo and redo in both editors, code blocks, and search inputs; disk reload history reset; undo/redo disk adoption; read-only history guards; CRLF; no-op save; mode/tab switches; clean refresh; conflict/diff; discard/cancel; rename; delete/recreate; repeated CLI; Unicode/caller cwd; local image and alt fidelity; project README preview/mode/no-op save; user guide rich editing; literal code preserved and HTML examples inert; frontmatter; dirty close/quit cancel; save on close; task/numbered/nested/wrapped list alignment at 12–28px; local fonts; One themes; system preference; live sizing without editor remounts; opaque frontmatter rich editing; sticky Source; scoped Quick Open; background close selection; editable diff and keyboard change acceptance; stale merged-save rejection; clean change review; New/Save As UI (native selection simulated); Save As cancel/failure; recovery checkpoint, process crash, restart, conflict-safe restore (native approval simulated), and deletion'}
     (OUT / 'desktop.json').write_text(json.dumps(report, indent=2))
     print(json.dumps(report, indent=2))
     # Close only the temporary documents; the app remains available for manual checks.

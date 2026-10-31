@@ -7,6 +7,7 @@ export const intentInstruction = (intent: FeedbackMessage['intent']) => intent =
   ? 'Explain the selected material. Answer in Pi without editing files.'
   : intent === 'review' ? 'Review the selected material. Report findings and suggestions in Pi without editing files.'
   : 'Make the requested edit. Re-read the current source before changing it and keep the change scoped to this request.';
+export const NOT_STARTED = 'Pi did not start this request. Check its model and login in Pi, then retry. The message stays the same.';
 export interface FeedbackBatch { id: string; source: 'sidelit'; projectRoot?: string; notes: FeedbackMessage[] }
 export interface ReviewRecord {
   version: 1;
@@ -110,6 +111,11 @@ export class ReviewNotes {
       if (!attempt) return;
       const ack = await this.io.feedbackStatus(attempt.target, attempt.message.id);
       if (ack.id !== attempt.message.id) throw Error('Pi acknowledged a different batch.');
+      if (ack.status === 'failed') {
+        // Keep the frozen target and payload; dropping the receipt re-enables retry.
+        await this.commit({ ...this.state.record, attempt: { target: attempt.target, message: attempt.message } });
+        throw Error(NOT_STARTED);
+      }
       if (attempt.ack?.status === ack.status && attempt.ack?.delivery === ack.delivery) return;
       await this.commit({ ...this.state.record, attempt: { ...attempt, ack } });
     });

@@ -101,12 +101,12 @@ with tempfile.TemporaryDirectory(prefix='sidelit-companion-') as temp:
                 js('const el=document.querySelector(arguments[0]);Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el),"value").set.call(el,arguments[1]);el.dispatchEvent(new Event("input",{bubbles:true}));el.dispatchEvent(new Event("change",{bubbles:true}))', selector, text)
             def capture(name):
                 (OUT / name).write_bytes(base64.b64decode(request(f'/session/{session}/screenshot')))
-            js('window.__previewEvents=[];window.__errors=[];addEventListener("message",e=>__previewEvents.push({data:e.data,origin:e.origin}));addEventListener("error",e=>__errors.push(e.message))')
-            wait(lambda: js('return !!document.querySelector(".preview-frame")'), 'HTML frame')
             if os.environ.get('SIDELIT_TEST_FLOAT') == '1':
                 windows = json.loads(subprocess.check_output(['aerospace', 'list-windows', '--all', '--json']))
                 test_window = next(w for w in windows if w['app-name'] == BINARY.parents[2].stem)
                 subprocess.run(['aerospace', 'layout', '--window-id', str(test_window['window-id']), 'floating'], check=True)
+            js('window.__previewEvents=[];window.__errors=[];addEventListener("message",e=>__previewEvents.push({data:e.data,origin:e.origin}));addEventListener("error",e=>__errors.push(e.message))')
+            wait(lambda: js('return !!document.querySelector(".preview-frame")'), 'HTML frame')
             request(f'/session/{session}/window/rect', {'width': 1180, 'height': 820})
             value('select[aria-label="Theme"]', 'dark')
             js('const b=document.querySelector(".error-banner");if(b?.textContent.includes("sidelit-companion-"))b.querySelector("button").click()')
@@ -193,7 +193,7 @@ with tempfile.TemporaryDirectory(prefix='sidelit-companion-') as temp:
             mdx_refreshed = wait(lambda: (m if (m := metrics()) and m['scrollY'] > mdx_position['scrollY'] + 200 else None), 'MDX scroll after recompile')
             assert abs(mdx_refreshed['anchorTop'] - mdx_position['anchorTop']) <= 2, mdx_refreshed
             mdx.write_text('import Site from "./site"\n\n<Site />')
-            wait(lambda: 'Preview unavailable' in body(), 'unsupported project import error')
+            wait(lambda: 'Showing the last good render' in body() and 'MDX imports require a project development server' in body(), 'unsupported project import error')
             # The shipped bridge is the only integration added to this local server.
             (folder / 'sidelit.js').write_text((ROOT / 'extensions/preview-bridge/sidelit.js').read_text())
             (folder / 'dev.html').write_text('<h1>Local dev app</h1>' + passages + '<script src="sidelit.js"></script><script>' + PROBE + '</script>')

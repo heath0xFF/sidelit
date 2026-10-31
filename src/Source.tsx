@@ -6,6 +6,7 @@ import * as monaco from "monaco-editor/editor/editor.api.js";
 import "monaco-editor/languages/definitions/markdown/register.js";
 import "monaco-editor/languages/definitions/html/register.js";
 import { formatForPath } from './formats';
+import { sourceSelection, type SelectionContext } from "./inspection";
 import "monaco-editor/features/register.all.js";
 import EditorWorker from "monaco-editor/editor/editor.worker.js?worker";
 
@@ -72,6 +73,7 @@ export default function Source({
   original,
   readOnly = false,
   history,
+  onTextSelection,
 }: {
   path: string;
   text: string;
@@ -81,8 +83,24 @@ export default function Source({
   original?: string;
   readOnly?: boolean;
   history: Ref<EditorHistory>;
+  onTextSelection?: (selection: SelectionContext | null) => void;
 }) {
   const root = useRef<HTMLDivElement>(null);
+  const selecting = useRef(onTextSelection);
+  selecting.current = onTextSelection;
+  const selected = useRef(false);
+  const captureSelection = () => {
+    const code = editor.current;
+    if (!selecting.current || !code || "getModifiedEditor" in code) return;
+    const model = code.getModel(), range = code.getSelection();
+    if (!model || !range) return;
+    const start = range.getStartPosition(), place = code.getScrolledVisiblePosition(start), bounds = root.current!.getBoundingClientRect();
+    const context = sourceSelection(model.getValue(), model.getOffsetAt(start), model.getOffsetAt(range.getEndPosition()),
+      place ? { x: bounds.x + place.left, y: bounds.y + place.top, width: 1, height: place.height } : undefined);
+    // Most key presses have no selection; do not re-render the app for each one.
+    if (context || selected.current) selecting.current(context ?? null);
+    selected.current = !!context;
+  };
   const editor = useRef<
     | monaco.editor.IStandaloneCodeEditor
     | monaco.editor.IStandaloneDiffEditor
@@ -206,6 +224,8 @@ export default function Source({
     <div
       ref={root}
       className="source-editor"
+      onMouseUp={captureSelection}
+      onKeyUp={captureSelection}
       aria-label={
         original !== undefined
           ? "Disk and draft comparison"

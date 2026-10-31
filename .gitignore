@@ -13,3 +13,6 @@ test-results/
 .env
 .env.*
 !.env.example
+
+# Local source artwork, not part of the app.
+sidelit-the-fold-icons.zip

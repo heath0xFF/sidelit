@@ -1,5 +1,4 @@
 import type { PreviewAsset } from './api';
-import { frontmatter, sourceReason } from './fidelity';
 import bridge from '../extensions/preview-bridge/sidelit.js?raw';
 import proseFont from '@fontsource-variable/ibm-plex-sans/files/ibm-plex-sans-latin-wght-normal.woff2?inline';
 import italicFont from '@fontsource-variable/ibm-plex-sans/files/ibm-plex-sans-latin-wght-italic.woff2?inline';
@@ -27,13 +26,7 @@ const isLocal = (ref: string) => !!ref && !/^(?:[a-z][\w+.-]*:|\/\/|#)/i.test(re
 const fileUrl = (path: string) => 'file://' + path.split('/').map(encodeURIComponent).join('/');
 const safeScript = (script: string) => script.replace(/<\/script/gi, '<\\/script');
 
-export async function preparePreview(source: string, path: string, format: 'html' | 'mdx' | 'markdown', scripts: boolean, runtime: string, read: ReadAsset) {
-  const markdown = format === 'markdown';
-  if (markdown) {
-    const reason = sourceReason(source, true);
-    if (reason) throw new Error(reason);
-    source = frontmatter(source).body;
-  }
+export async function preparePreview(source: string, path: string, format: 'html' | 'mdx', scripts: boolean, runtime: string, read: ReadAsset) {
   const compiled = format !== 'html';
   let count = 0;
   let assetBytes = 0;
@@ -63,15 +56,16 @@ export async function preparePreview(source: string, path: string, format: 'html
         const sheet = await asset(match[1], base);
         let content = await css(sheet.value, sheet.path, depth + 1);
         if (match[2].trim()) content = `@media ${match[2]}{${content}}`;
-        text = text.replace(match[0], content);
+        // A replacer keeps `$&` and similar sequences in the stylesheet literal.
+        text = text.replace(match[0], () => content);
       } catch (error) { warnings.push(String(error)); text = text.replace(match[0], ''); }
     }
     const matches = [...text.matchAll(/url\(\s*['"]?([^'"\)]+?)['"]?\s*\)/gi)];
-    for (const match of matches) if (isLocal(match[1])) text = text.replace(match[0], `url("${await image(match[1], base)}")`);
+    for (const match of matches) if (isLocal(match[1])) { const url = await image(match[1], base); text = text.replace(match[0], () => `url("${url}")`); }
     return text;
   };
   let code = '';
-  if (compiled) code = await (await import('./mdx')).compileStandaloneMdx(source, ref => image(ref), markdown ? 'md' : 'mdx');
+  if (compiled) code = await (await import('./mdx')).compileStandaloneMdx(source, ref => image(ref));
   const parsed = new DOMParser().parseFromString(compiled ? '<div id="sidelit-root"></div>' : source, 'text/html');
   for (const node of [...parsed.querySelectorAll('base,iframe,frame,frameset,object,embed,portal,meta[http-equiv]')]) node.remove();
   for (const node of [...parsed.querySelectorAll('*')]) {
@@ -114,7 +108,7 @@ export async function preparePreview(source: string, path: string, format: 'html
   for (const element of [...parsed.querySelectorAll('[style]')]) element.setAttribute('style', await css(element.getAttribute('style')!, path));
   const nonce = crypto.randomUUID().replaceAll('-', '');
   const csp = parsed.createElement('meta'); csp.httpEquiv = 'Content-Security-Policy';
-  csp.content = `default-src 'none'; script-src ${scripts || format === 'mdx' ? "'unsafe-inline' 'unsafe-eval'" : "'nonce-" + nonce + "'" + (markdown ? " 'unsafe-eval'" : "")}; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`;
+  csp.content = `default-src 'none'; script-src ${scripts || format === 'mdx' ? "'unsafe-inline' 'unsafe-eval'" : "'nonce-" + nonce + "'"}; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'`;
   parsed.head.prepend(csp);
   const addScript = (text: string, first = false) => { const script = parsed.createElement('script'); script.setAttribute('nonce', nonce); script.textContent = safeScript(text); if (first) csp.after(script); else parsed.body.append(script); };
   addScript(bridge, true);

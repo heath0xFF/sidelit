@@ -1,10 +1,10 @@
 ---
-title: Mermaid preview
+title: Mermaid diagrams
 ---
 
 # Review the flow
 
-This document uses a read-only Mermaid preview. Use **Source** to change the prose or diagram code. Previewing and changing the theme must not change the file.
+Diagrams draw in the rich editor. Choose **Edit** to change the prose or a diagram.
 
 ## From draft to review
 
@@ -31,7 +31,7 @@ sequenceDiagram
 
 ## If a diagram cannot render
 
-The source stays available with an error. This example is intentionally invalid.
+The block shows an error and keeps its source. This example is intentionally invalid.
 
 ```mermaid
 not a diagram

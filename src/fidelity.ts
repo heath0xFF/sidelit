@@ -23,6 +23,14 @@ const supported = new Set([
   "tableCell",
   "thematicBreak",
   "break",
+  // Crepe keeps these unchanged; tests/crepe-roundtrip.test.ts holds it to that.
+  "html",
+  "footnoteReference",
+  "footnoteDefinition",
+  // Rewritten as inline links and images on the first edit, with the same targets.
+  "linkReference",
+  "imageReference",
+  "definition",
 ]);
 export function frontmatter(text: string) {
   const opening = /^(---|\+\+\+)[ \t]*\r?\n/.exec(text);
@@ -46,7 +54,7 @@ export function replaceBody(original: string, body: string) {
   return prefix + separator + lineEndings(body, original);
 }
 
-export function sourceReason(text: string, preview = false): string | undefined {
+export function sourceReason(text: string): string | undefined {
   // Bound rich-editor work before parsing; Source can handle much larger files.
   if (text.length > 256 * 1024)
     return "Large documents use Source for responsive editing.";
@@ -55,34 +63,18 @@ export function sourceReason(text: string, preview = false): string | undefined 
   const parts = frontmatter(text);
   if (parts.unclosed)
     return "Unclosed frontmatter is preserved in Source mode.";
-  text = parts.body;
   let reason: string | undefined;
-  const prose: string[] = [];
-  let end = 0;
   const visit = (node: {
     type: string;
-    value?: string;
     children?: unknown[];
     url?: string;
-    lang?: string;
     meta?: string | null;
-    position?: { start: { offset?: number }; end: { offset?: number } };
   }) => {
-    const comment = preview && node.type === "html" && /^(?:<!--(?:(?!-->)[\s\S])*-->[ \t\r\n]*)+$/.test(node.value ?? "");
-    if (node.type === "code" || node.type === "inlineCode" || comment) {
-      const from = node.position?.start.offset;
-      const to = node.position?.end.offset;
-      if (from !== undefined && to !== undefined) {
-        // Keep code and hidden comments opaque without creating new prose blocks.
-        prose.push(text.slice(end, from), "`code`");
-        end = to;
-      }
-    }
-    if (!supported.has(node.type) && !comment)
-      reason =
-        "HTML, references, or extension syntax is preserved in Source mode.";
-    if (node.type === "code" && ((!preview && node.lang === "mermaid") || node.meta))
-      reason = "Diagram or code metadata is preserved in Source mode.";
+    if (!supported.has(node.type))
+      reason = "This syntax is preserved in Source mode.";
+    // Crepe drops fence metadata when it writes the document back.
+    if (node.type === "code" && node.meta)
+      reason = "Code metadata is preserved in Source mode.";
     if (
       node.url &&
       /^[a-z][a-z\d+.-]*:/i.test(node.url) &&
@@ -93,9 +85,7 @@ export function sourceReason(text: string, preview = false): string | undefined 
       visit(child as Parameters<typeof visit>[0]),
     );
   };
-  visit(parser.parse(text));
-  if (/\$|\\[([]|^\s*(?:::|\[\^)/m.test(prose.join("") + text.slice(end)))
-    return "Math or extension syntax is preserved in Source mode.";
+  visit(parser.parse(parts.body));
   return reason;
 }
 export function lineEndings(text: string, original: string) {

@@ -5,13 +5,14 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import * as runtime from 'react/jsx-runtime';
 import { describe, expect, it } from 'vitest';
 import { render } from 'pele';
-import { mermaidOptions, PreviewCodeBlock } from '../src/preview-mermaid';
+import { PreviewCodeBlock } from '../src/preview-mermaid';
 import { compileStandaloneMdx } from '../src/mdx';
-import { preparePreview } from '../src/preview-html';
+import { renderMermaidBlock } from '../src/mermaid-block';
+import { mermaidOptions } from '../src/mermaid-options';
 import readme from '../README.md?raw';
 
 async function content(source: string) {
-  const code = await compileStandaloneMdx(source, undefined, 'md');
+  const code = await compileStandaloneMdx(source);
   return new Function(code)(runtime).default;
 }
 
@@ -44,14 +45,12 @@ describe('Mermaid preview', () => {
     expect(() => render('flowchart LR\n' + Array.from({ length: 501 }, (_, i) => `A${i} --> A${i + 1}`).join('\n'), mermaidOptions)).toThrow(/limit|edges/i);
     expect(() => render('flowchart LR\n A --> B', { ...mermaidOptions, outputLimit: 1 })).toThrow(/limit/i);
   });
-  it('treats Markdown expressions as text and keeps other code blocks unchanged', async () => {
-    const Content = await content('# Plan\n\n{globalThis.__diagramExecuted = true}\n\n```js\nconst x = 1;\n```\n\n```mermaid\nflowchart LR\n A-->B\n```');
+  it('keeps other code blocks unchanged in MDX', async () => {
+    const Content = await content('# Plan\n\n```js\nconst x = 1;\n```\n\n```mermaid\nflowchart LR\n A-->B\n```');
     const html = renderToStaticMarkup(createElement(Content, { components: { pre: PreviewCodeBlock } }));
-    expect(html).toContain('{globalThis.__diagramExecuted = true}');
     expect(html).toContain('tok-keyword');
     expect(html).toContain('Diagram source');
     expect(html).toContain('A--&gt;B');
-    expect((globalThis as any).__diagramExecuted).toBeUndefined();
   });
   it('keeps excess diagrams as visible source', async () => {
     const Content = await content(Array(33).fill('```mermaid\nflowchart LR\n A-->B\n```').join('\n\n'));
@@ -74,17 +73,15 @@ describe('Mermaid preview', () => {
       expect(container.textContent).toContain('After');
     } finally { await act(async () => root.unmount()); container.remove(); }
   });
-  it('uses the isolated preview pipeline, strips frontmatter, and keeps the fidelity gate', async () => {
-    const source = '---\ntitle: Private metadata\n---\n\n# Plan\n\n```mermaid\nflowchart LR\n A-->B\n```';
-    const result = await preparePreview(source, '/project/plan.md', 'markdown', false, '/* runtime */', async () => { throw Error('unexpected asset'); });
-    const page = new DOMParser().parseFromString(result.html, 'text/html');
-    const csp = page.querySelector('meta[http-equiv]')!.getAttribute('content')!;
-    expect(csp).toContain("script-src 'nonce-");
-    expect(csp).toContain("connect-src 'none'");
-    expect(csp).toContain("frame-src 'none'");
-    const config = JSON.parse(page.getElementById('sidelit-mdx')!.textContent!);
-    expect(config.code).not.toContain('Private metadata');
-    expect(config.code).toContain('data-mermaid');
-    await expect(preparePreview(source + '\n<script>bad()</script>', '/project/plan.md', 'markdown', false, '', async () => { throw Error('unexpected'); })).rejects.toThrow(/preserved in Source/);
+  it('draws Mermaid blocks in the rich editor and leaves other languages alone', async () => {
+    expect(renderMermaidBlock('js', 'const x = 1', () => { throw Error('unexpected'); })).toBeNull();
+    const draw = (source: string) => new Promise<string | null>(resolve => { expect(renderMermaidBlock('mermaid', source, resolve)).toBeUndefined(); });
+    const [first, second] = await Promise.all([draw('flowchart LR\n A --> B'), draw('flowchart LR\n A --> B')]);
+    const ids = (svg: string | null) => [...new DOMParser().parseFromString(svg!, 'image/svg+xml').querySelectorAll('[id]')].map(node => node.id);
+    expect(first).toContain('<svg');
+    expect(ids(first).filter(id => ids(second).includes(id))).toEqual([]);
+    const failed = await draw('<script>bad()</script>');
+    expect(failed).toContain('Diagram unavailable');
+    expect(failed).not.toContain('bad()');
   });
 });

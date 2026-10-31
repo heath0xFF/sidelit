@@ -1,11 +1,7 @@
 // This component is bundled only into the opaque-origin preview frame.
 import { isValidElement, useEffect, useRef, useState, type ComponentProps } from 'react';
-import { mount, type RenderOptions } from 'pele';
-
-// shortcut: size bounds do not limit CPU time; use a worker if diagrams stall the preview.
-export const mermaidOptions: RenderOptions = {
-  links: false, images: false, limit: 20_000, outputLimit: 1_000_000, maxEdges: 500,
-};
+import { mount } from 'pele';
+import { mermaidOptions } from './mermaid-options';
 
 function Diagram({ source, limited }: { source: string; limited: boolean }) {
   const container = useRef<HTMLDivElement>(null);

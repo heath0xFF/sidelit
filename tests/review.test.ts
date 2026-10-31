@@ -79,6 +79,18 @@ describe('review notes', () => {
     await restarted.clearAttempt(); expect(disk().notes.map(note => note.id)).toEqual(['later']);
     expect(disk().attempt).toBeUndefined();
   });
+  it('re-enables retry of the same frozen batch when Pi never started it', async () => {
+    const { io, store, disk } = setup(); await store.load(); await store.save(note());
+    const message = batchMessage(store.snapshot().record.notes, 'batch');
+    await store.send('pi-1', message, () => true);
+    io.feedbackStatus.mockResolvedValueOnce({ id: 'batch', status: 'failed', delivery: 'none' } as any);
+    await expect(store.checkStatus()).rejects.toThrow('did not start');
+    expect(disk().attempt).toEqual({ target: 'pi-1', message });
+    await store.send('pi-2', { ...message, id: 'changed' }, () => true);
+    expect(io.sendReview).toHaveBeenCalledTimes(2);
+    expect(io.sendReview).toHaveBeenLastCalledWith('pi-1', message);
+    expect(disk().attempt?.ack?.status).toBe('received');
+  });
   it('never sends after a failed checkpoint or a stale capture and freezes failed checkpoints for retry', async () => {
     const { io, store } = setup(); await store.load(); await store.save(note());
     const message = batchMessage(store.snapshot().record.notes, 'batch');

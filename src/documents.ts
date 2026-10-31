@@ -10,7 +10,6 @@ export interface Document {
   revision: number;
   mode: Mode;
   reason?: string;
-  previewOnly?: boolean;
   review?: Snapshot;
   pending?: { snapshot: Snapshot | null; error: string | null };
   saving: boolean;
@@ -18,12 +17,10 @@ export interface Document {
 }
 export const dirty = (doc: Document) => doc.text !== doc.disk.text;
 function rendering(path: string, text: string, mode: Mode) {
-  const editReason = mode === "rendered" && formatForPath(path) === "markdown"
+  const reason = mode === "rendered" && formatForPath(path) === "markdown"
     ? sourceReason(text)
     : undefined;
-  // Diagrams and comments can be previewed safely, but must not enter the rich editor.
-  const reason = editReason ? sourceReason(text, true) : undefined;
-  return { mode: reason ? "source" as const : mode, reason, previewOnly: !!editReason && !reason };
+  return { mode: reason ? "source" as const : mode, reason };
 }
 export interface Transport {
   read(path: string): Promise<Snapshot>;

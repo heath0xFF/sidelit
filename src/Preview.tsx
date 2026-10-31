@@ -7,7 +7,7 @@ import { parsePreviewPosition, previewPosition, rememberPreviewPosition } from '
 import runtime from '../public/preview-runtime/runtime.js?raw';
 
 export default function Preview({ path, source = '', format, url, inspect, onText, onElement, onError, refresh = 0, onDismiss, onShortcut, dark = true, fontSize = 16, attachment, reveal = 0 }: {
-  path?: string; source?: string; format: 'html' | 'mdx' | 'markdown' | 'url'; url?: string;
+  path?: string; source?: string; format: 'html' | 'mdx' | 'url'; url?: string;
   inspect: boolean; onText: (value: SelectionContext | null) => void; onElement: (value: SelectionContext) => void;
   onError: (error: unknown) => void; refresh?: number; onDismiss?: () => void; onShortcut?: (key: string) => void;
   dark?: boolean; fontSize?: number;
@@ -25,6 +25,7 @@ export default function Preview({ path, source = '', format, url, inspect, onTex
   const [bridgeEnabled, setBridgeEnabled] = useState(false);
   const [ready, setReady] = useState(false);
   const revealed = useRef(0);
+  const compiled = useRef<string | undefined>(undefined);
   const callbacks = useRef({ onText, onElement, onError, onDismiss, onShortcut });
   callbacks.current = { onText, onElement, onError, onDismiss, onShortcut };
   const remote = format === 'url';
@@ -32,23 +33,30 @@ export default function Preview({ path, source = '', format, url, inspect, onTex
   const allowScripts = !!path && trustedPath === path;
   const connect = () => {
     const enabled = !remote || bridgeEnabled;
-    frame.current?.contentWindow?.postMessage({ source: 'sidelit-host', token: id, enabled, inspect: enabled && inspect, attachment: attachment ?? null, position: enabled ? previewPosition(positionKey) : undefined, appearance: format === 'mdx' || format === 'markdown' ? { dark, fontSize } : undefined }, remote && url ? new URL(url).origin : '*');
+    frame.current?.contentWindow?.postMessage({ source: 'sidelit-host', token: id, enabled, inspect: enabled && inspect, attachment: attachment ?? null, position: enabled ? previewPosition(positionKey) : undefined, appearance: format === 'mdx' ? { dark, fontSize } : undefined }, remote && url ? new URL(url).origin : '*');
   };
   useEffect(() => {
-    let alive = true; setReady(false); setError(''); setWarnings([]);
+    let alive = true; setReady(false); setWarnings([]);
+    // While typing MDX, wait for a pause and keep the last good render through syntax errors.
+    if (format !== 'mdx') setError('');
+    const typing = format === 'mdx' && compiled.current !== undefined && compiled.current !== source;
+    compiled.current = source;
     const publication = crypto.randomUUID();
+    let timer: ReturnType<typeof setTimeout> | undefined;
     if (remote) {
       try { setSrc(localServerUrl(url || '')); } catch (error) { setError(String(error)); }
     } else if (path) {
-      void preparePreview(source, path, format, allowScripts, runtime, api.previewAsset)
-        .then(async result => {
-          if (!alive) return;
-          const address = await api.publishPreview(publication, result.html);
-          if (alive) { setWarnings(result.warnings); setSrc(address + '?revision=' + crypto.randomUUID()); }
-          else void api.releasePreview(publication).catch(() => {});
-        }).catch(error => { if (alive) setError(String(error)); });
+      timer = setTimeout(() => {
+        void preparePreview(source, path, format, allowScripts, runtime, api.previewAsset)
+          .then(async result => {
+            if (!alive) return;
+            const address = await api.publishPreview(publication, result.html);
+            if (alive) { setError(''); setWarnings(result.warnings); setSrc(address + '?revision=' + crypto.randomUUID()); }
+            else void api.releasePreview(publication).catch(() => {});
+          }).catch(error => { if (alive) setError(String(error)); });
+      }, typing ? 300 : 0);
     }
-    return () => { alive = false; void api.releasePreview(publication).catch(() => {}); };
+    return () => { alive = false; clearTimeout(timer); void api.releasePreview(publication).catch(() => {}); };
   }, [path, source, format, url, allowScripts, reload, refresh, id, remote]);
   useEffect(() => { connect(); }, [inspect, src, bridgeEnabled, dark, fontSize, attachment]);
   useEffect(() => {
@@ -99,7 +107,8 @@ export default function Preview({ path, source = '', format, url, inspect, onTex
     </div>
     {remote && bridgeEnabled && !ready && <div className="fidelity-note">Waiting for the page’s inspection bridge. Include extensions/preview-bridge/sidelit.js in your development app. If the page is blank, check that the server is running and allows embedding.</div>}
     {warnings.length > 0 && <details className="preview-warnings"><summary>{warnings.length} preview warning{warnings.length === 1 ? '' : 's'}</summary>{warnings.map((warning, i) => <p key={i}>{warning}</p>)}</details>}
-    {error ? <div className="preview-error" role="alert"><strong>Preview unavailable</strong><span>{error}</span><small>Use Source to correct the document, or Dev Server for project imports and runtime dependencies.</small></div>
+    {error && src && format === 'mdx' && <div className="fidelity-note" role="status" title={error}>Showing the last good render. {error}</div>}
+    {error && !(src && format === 'mdx') ? <div className="preview-error" role="alert"><strong>Preview unavailable</strong><span>{error}</span><small>Use Source to correct the document, or Dev Server for project imports and runtime dependencies.</small></div>
       : src ? <div className={'preview-viewport' + (!width ? ' viewport-fluid' : '')}>
         <iframe key={remote ? src + ':' + reload + ':' + refresh : src} ref={frame} className="preview-frame" title="Sidelit preview" sandbox={remote ? 'allow-scripts allow-same-origin allow-forms' : 'allow-scripts'} src={src}
           style={{ width: width ? Math.max(240, width) : '100%', height: height ? Math.max(240, height) : '100%', minHeight: height ? Math.max(240, height) : '100%' }} onLoad={connect} />

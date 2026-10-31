@@ -865,13 +865,13 @@ export default function App() {
           </div>
         </details>
         <div className="toolbar-space" />
-        {doc?.format === 'markdown' && !doc.previewOnly && mode === 'rendered' && !serverUrl && <button aria-label="Edit rendered Markdown" aria-pressed={editing} onClick={() => setEditing(value => !value)}>{editing ? 'Done editing' : 'Edit'}</button>}
+        {doc?.format === 'markdown' && mode === 'rendered' && !serverUrl && <button aria-label="Edit rendered Markdown" aria-pressed={editing} onClick={() => setEditing(value => !value)}>{editing ? 'Done editing' : 'Edit'}</button>}
         {doc && !serverUrl && (
           <div className="mode-switch" aria-label="Editing mode">
             <button
               aria-pressed={mode === "rendered"}
               disabled={!!reason}
-              title={reason ?? "Rendered preview (⌘\\)"}
+              title={reason ?? "Rendered (⌘\\)"}
               onClick={() => {
                 documents.setMode(doc.path, "rendered");
                 setCompare(null);
@@ -1046,7 +1046,6 @@ export default function App() {
                 <button onClick={() => documents.update(doc.path, { review: undefined })}>Dismiss</button>
               </section>}
               {mode === "rendered" && /^(---|\+\+\+)[ \t]*\r?\n/.test(doc.text) && !comparison && !serverUrl && <div className="fidelity-note">Frontmatter is kept unchanged. Use Source to edit metadata.</div>}
-              {doc.previewOnly && mode === "rendered" && !comparison && !serverUrl && <div className="fidelity-note">This preview is read-only to preserve Markdown syntax. Use Source to edit this document.</div>}
               {reason && !comparison && !serverUrl && (
                 <div className="fidelity-note">
                   {reason} No content has been removed.
@@ -1110,9 +1109,42 @@ export default function App() {
                     fontSize={size}
                     history={history}
                     onChange={(text) => documents.edit(doc.path, text)}
+                    onTextSelection={captureSelection}
                   />
                 </Suspense>
-              ) : doc.format === "markdown" && !doc.previewOnly ? (
+              ) : doc.format === "mdx" ? (
+                <div className="mdx-split">
+                  <Suspense fallback={<div className="loading">Loading source editor…</div>}>
+                    <Source
+                      key={doc.path}
+                      path={doc.path}
+                      text={doc.text}
+                      dark={dark}
+                      fontSize={size}
+                      history={history}
+                      onChange={(text) => documents.edit(doc.path, text)}
+                      onTextSelection={captureSelection}
+                    />
+                  </Suspense>
+                  <Preview
+                    key={doc.path}
+                    path={doc.path}
+                    source={doc.text}
+                    format="mdx"
+                    dark={dark}
+                    fontSize={size}
+                    refresh={refresh + previewRefresh}
+                    onDismiss={dismissFeedback}
+                    onShortcut={previewShortcut}
+                    inspect={inspect}
+                    onText={captureSelection}
+                    onElement={openFeedback}
+                    attachment={attachment}
+                    reveal={reveal}
+                    onError={report}
+                  />
+                </div>
+              ) : doc.format === "markdown" ? (
                 <Rich
                   key={doc.path}
                   path={doc.path}
@@ -1133,7 +1165,7 @@ export default function App() {
                   key={doc.path}
                   path={doc.path}
                   source={doc.text}
-                  format={doc.format}
+                  format="html"
                   dark={dark}
                   fontSize={size}
                   refresh={refresh + previewRefresh}

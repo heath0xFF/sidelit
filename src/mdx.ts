@@ -11,9 +11,9 @@ function visit(value: unknown, fn: (node: any) => void) {
   for (const [key, child] of Object.entries(node)) if (!['position', 'loc'].includes(key)) visit(child, fn);
 }
 
-export async function compileStandaloneMdx(source: string, asset: (reference: string) => Promise<string> = async ref => ref, format: 'md' | 'mdx' = 'mdx') {
+export async function compileStandaloneMdx(source: string, asset: (reference: string) => Promise<string> = async ref => ref) {
   const result = await compile(source, {
-    format, outputFormat: 'function-body', development: false, remarkPlugins: [remarkGfm, () => async (tree: unknown) => {
+    format: 'mdx', outputFormat: 'function-body', development: false, remarkPlugins: [remarkGfm, () => async (tree: unknown) => {
       const jobs: Promise<void>[] = [];
       visit(tree, node => {
         if (node.type === 'ImportDeclaration' || node.type === 'ImportExpression' || node.type === 'ExportAllDeclaration' || (node.type === 'ExportNamedDeclaration' && node.source)) {

@@ -37,7 +37,7 @@ For maintainers, [RELEASING.md](../RELEASING.md) explains the GitHub build and r
 
 Sidelit keeps the terminal and editor as the primary development environment:
 
-- Ordinary Markdown opens for reading in the Crepe renderer, with GFM tables, tasks, images, links, and code blocks. Choose **Edit** for rich editing or **Source** for Monaco. Markdown with Mermaid diagrams or HTML comments uses a read-only sandboxed preview; edit it in Source. Comments stay hidden and unchanged.
+- Markdown opens for reading in the Crepe rich editor, with GFM tables, tasks, images, links, code blocks, and drawn Mermaid diagrams. Choose **Edit** for rich editing or **Source** for Monaco. MDX shows source beside a live render that updates as you type; a syntax error keeps the last good render on screen. HTML shows the rendered page, with **Source** for its text.
 - HTML and MDX open in a bounded preview surface. HTML is sanitized before it enters a sandboxed iframe; page scripts are off until you explicitly enable them.
 - Standalone MDX uses the official MDX compiler: JSX, expressions, locally exported components, GFM, highlighted code, and built-in Callout, Card, Badge, and Stack components. Compiled code runs only inside the isolated preview. Imports (including dynamic imports) require a development-server preview; Sidelit does not recreate your framework runtime.
 - Use Dev Server to connect to a running local URL such as http://localhost:5173. Sidelit does not start or manage that process.
@@ -80,7 +80,7 @@ Setup installs versioned resources in Sidelit's user application-support directo
 
 Doctor reports the invoked build, known running builds, installation versus live registration, project matches and a read-only socket health check. It never prompts an agent. Older running apps may report an unknown build: save, quit and reopen the intended bundle. JSON uses `schemaVersion: 1`; exit codes are 0 for success, 1 for setup conflicts or no healthy matching session in doctor, and 2 for invalid arguments or operational errors. Use `--` before a document named `setup`, `doctor`, or `sessions`.
 
-Select text and choose Explain, Review or Edit, choose the Pi target, and press **Send to Pi** (Cmd/Ctrl+Enter). General feedback works without a selection. **Queued** or **Received** means submitted as a native follow-up; **Pi accepted the request** appears only after Pi emits its user-message event. It does not mean the work is finished. Retry preserves the message ID and payload so an uncertain delivery cannot inject the same instruction twice.
+Select text and choose Explain, Review or Edit, choose the Pi target, and press **Send to Pi** (Cmd/Ctrl+Enter). General feedback works without a selection. If Pi never starts a request, for example because its login expired, Sidelit reports that after about 10 seconds and offers a retry of the same message. **Queued** or **Received** means submitted as a native follow-up; **Pi accepted the request** appears only after Pi emits its user-message event. It does not mean the work is finished. Retry preserves the message ID and payload so an uncertain delivery cannot inject the same instruction twice.
 
 End-to-end example: run `cd ~/code/site && pi` in Rex, open `src/pages/index.mdx` in Sidelit, press `Cmd/Ctrl+Shift+I`, click the navigation element, enter “Make this navigation more compact,” choose `Pi · site`, and press **Send to Pi**. After Pi edits the file, Sidelit refreshes the clean preview automatically.
 
@@ -193,7 +193,7 @@ Each open file has one canonical text buffer, a disk snapshot and SHA-256 hash, 
 
 - Opening, focusing, changing tabs or modes, and no-op Save do not rewrite a file. Crepe does not serialize its initial document into the buffer.
 - A real rich edit can normalize supported syntax: list markers, whitespace, tables, or fences. **Arbitrary Markdown round trips are not byte-perfect.** Use Source for exact syntax control. Undoing back to the loaded rendered document restores its original Markdown bytes.
-- YAML (`---`) and TOML (`+++`) frontmatter stays byte-for-byte unchanged while you edit the rendered body. Use Source to edit metadata. Markdown with Mermaid blocks or complete HTML comments uses a read-only Rendered preview; edit the document in Source. Comments stay hidden and unchanged. Unclosed frontmatter or comments, other raw HTML, reference syntax, math, code metadata, and recognized extensions still use Source with an explanation. The conservative gate can also route ordinary dollar signs or large documents to Source. Source stays selected until you explicitly change mode.
+- YAML (`---`) and TOML (`+++`) frontmatter stays byte-for-byte unchanged while you edit the rendered body. Use Source to edit metadata. Math, raw HTML, comments, footnotes, and `:::` blocks stay byte-for-byte unchanged when you edit around them. Raw HTML and math show as plain text, without running or being laid out, and comments stay hidden. Reference links become inline links on the first edit, with the same targets. Code fences with metadata, unclosed frontmatter, byte-order marks, non-web link schemes, and documents over 256 KiB use Source with an explanation. Source stays selected until you explicitly change mode.
 - UTF-8 and uniform LF/CRLF are supported. Rich edits preserve uniform CRLF. Mixed line endings can normalize after an edit.
 - A clean buffer refreshes after an external change. **Review changes** shows its previous disk version beside the current text, both read-only. Only the latest previous version is kept in memory.
 - A dirty buffer keeps its draft and shows **Compare**, **Reload from Disk**, and **Save Copy**. Reload asks before discarding a draft.
@@ -208,14 +208,14 @@ Optimistic checks are **not a filesystem lock**. An arbitrary writer can still r
 
 ### Mermaid diagrams
 
-Fenced `mermaid` blocks render offline with [Pele](https://github.com/obsidianmd/pele) in the isolated preview frame. Markdown files with diagrams are read-only in Rendered mode; Source remains editable. MDX previews also render Mermaid blocks. The original Markdown is not rewritten.
+Fenced `mermaid` blocks draw offline with [Pele](https://github.com/obsidianmd/pele) inside the rich editor and in MDX previews, and their source stays unchanged. In the rich editor, Pele runs in the app's main window with links and images off, and its output is sanitized.
 
-- Expand **Diagram source** to read or select the diagram code. Failed diagrams show their source and an error; the surrounding prose stays visible.
-- Diagrams follow the theme and text size. Links, external images, custom icons, and math renderers are not enabled.
-- Each page renders at most 32 diagrams. Each diagram is limited to 20,000 source characters, 500 flowchart edges, and 1,000,000 SVG characters. These bounds are not a CPU time limit.
+- Use the block's toggle to switch between the diagram and its code. A failed diagram shows an error, and the surrounding prose stays visible.
+- Diagrams follow the theme. Links, external images, custom icons, and math renderers are not enabled.
+- Each diagram is limited to 20,000 source characters, 500 flowchart edges, and 1,000,000 SVG characters. These bounds are not a CPU time limit, so an extremely complex diagram can stall the whole window. MDX previews also render at most 32 diagrams per page.
 - Pele uses its own layout; it does not promise the same appearance as Mermaid.js.
 
-Try [samples/Diagrams.md](../samples/Diagrams.md). Other unsupported Markdown syntax still uses Source, even when the document contains diagrams.
+Try [samples/Diagrams.md](../samples/Diagrams.md).
 
 ### Session and crash recovery
 

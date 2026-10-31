@@ -5,7 +5,7 @@ tags: [research, sample]
 
 # Preserving what we do not render
 
-This document opens in Source mode because its body includes math, Mermaid, and raw HTML. Frontmatter alone can use rendered editing; its metadata stays unchanged. Opening, changing modes, and a no-op Save must preserve all bytes.
+This document mixes math, Mermaid, and raw HTML. The rich editor keeps them unchanged, and comments stay hidden. Frontmatter stays unchanged too. Opening, changing modes, and a no-op Save must preserve all bytes.
 
 ```mermaid
 graph LR

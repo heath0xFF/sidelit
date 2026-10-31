@@ -3,7 +3,7 @@ import { act, useState, type ComponentProps } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import FeedbackComposer from '../src/FeedbackComposer';
-import { elementContext, feedbackSelection, textContext, type FeedbackMessage } from '../src/inspection';
+import { elementContext, feedbackSelection, sourceSelection, textContext, type FeedbackMessage } from '../src/inspection';
 import { locateSelection } from '../src/selection-dom';
 
 vi.mock('../src/api', () => ({ api: { feedbackStatus: vi.fn(), focusAgent: vi.fn() } }));
@@ -60,6 +60,33 @@ describe('request continuity', () => {
     expect(send).toHaveBeenCalledWith('pi', expect.objectContaining({ id: 'request-1', intent: 'explain', instruction: expect.stringContaining('without editing files') }));
     expect(document.querySelector('textarea')!.readOnly).toBe(true);
     expect(document.body.textContent).toContain('Answers appear in Pi');
+  });
+  it('offers the same frozen retry when Pi never started the request', async () => {
+    const { api } = await import('../src/api');
+    vi.useFakeTimers();
+    try {
+      vi.mocked(api.feedbackStatus).mockResolvedValue({ id: 'request-1', status: 'failed', delivery: 'none' });
+      const send = await mount(vi.fn().mockResolvedValue({ id: 'request-1', status: 'received', delivery: 'submitted' }));
+      const button = (label: string) => [...document.querySelectorAll('button')].find(b => b.textContent === label);
+      await act(async () => button('Send to Pi')!.click());
+      expect(button('Sent')?.disabled).toBe(true);
+      await act(async () => { await vi.advanceTimersByTimeAsync(300); });
+      expect(document.querySelector('[role=alert]')?.textContent).toContain('did not start');
+      expect(button('Retry delivery')?.disabled).toBe(false);
+      await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+      expect(api.feedbackStatus).toHaveBeenCalledTimes(1);
+      await act(async () => button('Retry delivery')!.click());
+      expect(send).toHaveBeenCalledTimes(2);
+      expect(send.mock.calls[1]).toEqual(send.mock.calls[0]);
+    } finally { vi.useRealTimers(); }
+  });
+  it('captures Source selections with their exact line', () => {
+    const source = '# One\r\n\r\nTwo three\r\n';
+    const from = source.indexOf('three');
+    expect(sourceSelection(source, from, from + 5)).toMatchObject({ type: 'text', text: 'three', sourceLine: 3, locatorConfidence: 'exact', prefix: source.slice(0, from), truncated: false });
+    expect(sourceSelection(source, 5, 7)).toBeUndefined();
+    expect(sourceSelection('x'.repeat(2000), 0, 2000)).toMatchObject({ truncated: true });
+    expect(sourceSelection('x'.repeat(2000), 0, 2000)!.text).toHaveLength(1200);
   });
   it('preserves whitespace, discloses truncation and strips geometry from wire context', () => {
     document.body.innerHTML = '<p>prefix <b>alpha\n  beta</b> suffix</p>';

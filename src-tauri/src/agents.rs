@@ -609,8 +609,10 @@ fn parse_ack(response: &str, id: &str) -> Result<DeliveryAck, String> {
             .to_string());
     }
     let ack: DeliveryAck = serde_json::from_value(value).map_err(|e| e.to_string())?;
-    if !matches!(ack.status.as_str(), "received" | "accepted" | "duplicate")
-        || !matches!(ack.delivery.as_str(), "submitted" | "queued" | "consumed")
+    let not_started = ack.status == "failed" && ack.delivery == "none";
+    if !not_started
+        && (!matches!(ack.status.as_str(), "received" | "accepted" | "duplicate")
+            || !matches!(ack.delivery.as_str(), "submitted" | "queued" | "consumed"))
     {
         return Err("Unknown Pi acknowledgment status".into());
     }
@@ -720,6 +722,20 @@ mod tests {
     fn receipts_require_matching_ids_complete_framing_and_known_semantics() {
         let received = "{\"id\":\"one\",\"status\":\"received\",\"delivery\":\"queued\"}\n";
         assert_eq!(parse_ack(received, "one").unwrap().status, "received");
+        assert_eq!(
+            parse_ack(
+                "{\"id\":\"one\",\"status\":\"failed\",\"delivery\":\"none\"}\n",
+                "one"
+            )
+            .unwrap()
+            .status,
+            "failed"
+        );
+        assert!(parse_ack(
+            "{\"id\":\"one\",\"status\":\"failed\",\"delivery\":\"queued\"}\n",
+            "one"
+        )
+        .is_err());
         assert!(parse_ack(received, "two").is_err());
         assert!(parse_ack(received.trim(), "one").is_err());
         assert!(parse_ack(&format!("{}\n", "x".repeat(8192)), "one").is_err());

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api, type AgentTarget, type DeliveryAck } from './api';
 import { selectionSummary, type FeedbackMessage, type SelectionRect } from './inspection';
 
-import { intentInstruction } from './review';
+import { intentInstruction, NOT_STARTED } from './review';
 
 export default function FeedbackComposer({ context, open, targets, targetId, onTarget, onChange, onSend, onClose, onDiscard, loading, targetError, onRefreshTargets, stale, candidate, onReplace, onReveal, anchor, onCollect, savedNote = false, collectionBusy = false }: {
   context: FeedbackMessage; open: boolean; targets: AgentTarget[]; targetId: string;
@@ -34,7 +34,11 @@ export default function FeedbackComposer({ context, open, targets, targetId, onT
     if (ack?.status !== 'received' || !attempt.current) return;
     let cancelled = false, timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
-      try { const next = await api.feedbackStatus(attempt.current!.target, context.id); if (!cancelled) { setAck(next); setError(''); } }
+      try {
+        const next = await api.feedbackStatus(attempt.current!.target, context.id);
+        if (!cancelled && next.status === 'failed') { setAck(undefined); setError(NOT_STARTED); return; }
+        if (!cancelled) { setAck(next); setError(''); }
+      }
       catch (error) { if (!cancelled) setError(String(error) + ' The instruction may already be queued.'); }
       if (!cancelled) timer = setTimeout(poll, 1500);
     };

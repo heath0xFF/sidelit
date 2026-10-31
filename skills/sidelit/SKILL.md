@@ -49,7 +49,7 @@ If Sidelit is not installed, direct the user to `https://github.com/heath0xFF/si
 
 Prefer ordinary CommonMark/GFM: headings, paragraphs, emphasis, lists, tasks, tables, block quotes, and fenced code. Keep existing frontmatter, comments, and line endings unless asked to change them.
 
-Rendered mode preserves YAML/TOML frontmatter while editing the body. Use Source for metadata or exact syntax control. Markdown with Mermaid blocks or complete HTML comments has a read-only preview; use Source to edit it. Comments stay hidden and unchanged. Failed diagrams keep their source visible. Other raw HTML or JSX inside a Markdown file, math, reference syntax, and some extensions still use Source; do not remove such content merely to force rendered mode. Rich edits can normalize Markdown formatting. `.mdx` files use the separate MDX renderer, not the Markdown fidelity gate.
+Rendered mode preserves YAML/TOML frontmatter while editing the body. Use Source for metadata or exact syntax control. Mermaid blocks draw in the rich editor. Raw HTML and math show as plain text and stay unchanged, and comments stay hidden. Code fences with metadata, and a few other cases, open in Source; do not remove such content merely to force rendered mode. Rich edits can normalize Markdown formatting. `.mdx` files use the separate MDX renderer, not the Markdown fidelity gate.
 
 Markdown images use relative local PNG, JPEG, GIF, or WebP paths. Remote images, SVG, raw HTML execution, and image uploads are not supported in Markdown. Document files and Markdown images have a 16 MiB limit. Do not promise same-file Markdown link-anchor scrolling.
 

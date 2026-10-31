@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createConnection } from 'node:net';
 import { createHash, randomUUID } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
@@ -39,7 +39,7 @@ describe('Pi socket bridge', () => {
     const { default: extension, registryDirectory } = await import(/* @vite-ignore */ module);
     const hooks = new Map<string, Function>(); const sent: any[] = [], entries: any[] = [];
     const session = randomUUID();
-    const ctx = { cwd: '/tmp', isIdle: () => false, ui: { notify: (text: string) => { throw Error(text); } }, sessionManager: { getSessionId: () => session, getEntries: () => entries } };
+    const ctx = { cwd: '/tmp', isIdle: () => false, hasPendingMessages: () => true, ui: { notify: (text: string) => { throw Error(text); } }, sessionManager: { getSessionId: () => session, getEntries: () => entries } };
     extension({ on: (name: string, fn: Function) => hooks.set(name, fn), registerCommand: () => {}, sendUserMessage: (...args: any[]) => sent.push(args), appendEntry: (customType: string, data: unknown) => entries.push({ type: 'custom', customType, data }) });
     shutdown = async () => { await hooks.get('session_shutdown')!(); };
     await hooks.get('session_start')!({}, ctx);
@@ -68,5 +68,58 @@ describe('Pi socket bridge', () => {
     await shutdown!(); shutdown = undefined;
     await expect(stat(path)).rejects.toThrow(); await expect(stat(path + '.json')).rejects.toThrow();
     await expect(exchange(path, feedback)).rejects.toThrow();
+  });
+  const bridge = async (send: (...args: any[]) => void, state = { idle: true, pending: false }) => {
+    const module = '../extensions/pi-sidelit/index.ts';
+    const { default: extension, registryDirectory } = await import(/* @vite-ignore */ module);
+    const hooks = new Map<string, Function>(), entries: any[] = [], session = randomUUID();
+    const ctx = { cwd: '/tmp', isIdle: () => state.idle, hasPendingMessages: () => state.pending, ui: { notify: (text: string) => { throw Error(text); } }, sessionManager: { getSessionId: () => session, getEntries: () => entries } };
+    extension({ on: (name: string, fn: Function) => hooks.set(name, fn), registerCommand: () => {}, sendUserMessage: send, appendEntry: (customType: string, data: unknown) => entries.push({ type: 'custom', customType, data }) });
+    await hooks.get('session_start')!({}, ctx);
+    shutdown = async () => { await hooks.get('session_shutdown')!(); };
+    const path = `${registryDirectory()}/${createHash('sha256').update(`${process.pid}:${session}`).digest('hex').slice(0, 32)}.sock`;
+    const projectRoot = JSON.parse(await readFile(path + '.json', 'utf8')).projectRoot;
+    return { path, hooks, state, ctx, feedback: { ...message(), projectRoot } };
+  };
+  it('lets a request retry after sending throws', async () => {
+    const sent: any[] = []; let fail = true;
+    const { path, feedback } = await bridge((...args) => { if (fail) throw Error('Pi not ready'); sent.push(args); });
+    expect(await exchange(path, feedback)).toMatchObject({ status: 'error', error: expect.stringContaining('Pi not ready') });
+    expect(await exchange(path, { op: 'status', id: feedback.id })).toMatchObject({ status: 'error' });
+    fail = false;
+    expect(await exchange(path, feedback)).toMatchObject({ status: 'received' });
+    expect(sent).toHaveLength(1);
+  });
+  it('reports a request Pi never started and resends it once on retry', async () => {
+    const sent: any[] = [], now = vi.spyOn(Date, 'now');
+    try {
+      now.mockReturnValue(1_000_000);
+      const { path, feedback, hooks } = await bridge((...args) => sent.push(args));
+      expect(await exchange(path, feedback)).toMatchObject({ status: 'received' });
+      // Within the grace period Pi may still be running its pre-run checks.
+      now.mockReturnValue(1_009_999);
+      expect(await exchange(path, { op: 'status', id: feedback.id })).toMatchObject({ status: 'received' });
+      expect(await exchange(path, feedback)).toMatchObject({ status: 'received' }); expect(sent).toHaveLength(1);
+      now.mockReturnValue(1_010_000);
+      expect(await exchange(path, { op: 'status', id: feedback.id })).toEqual({ id: feedback.id, status: 'failed', delivery: 'none' });
+      expect(await exchange(path, feedback)).toMatchObject({ status: 'received' }); expect(sent).toHaveLength(2);
+      // The retry restarts the grace period, and consumption ends the question for good.
+      expect(await exchange(path, feedback)).toMatchObject({ status: 'received' }); expect(sent).toHaveLength(2);
+      hooks.get('message_start')!({ message: { role: 'user', content: sent[1][0] } });
+      now.mockReturnValue(2_000_000);
+      expect(await exchange(path, { op: 'status', id: feedback.id })).toMatchObject({ status: 'accepted' });
+      expect(await exchange(path, feedback)).toMatchObject({ status: 'duplicate' }); expect(sent).toHaveLength(2);
+    } finally { now.mockRestore(); }
+  });
+  it.each([['busy', { idle: false, pending: false }], ['holding queued messages', { idle: true, pending: true }]])('does not call a request lost while Pi is %s', async (_name, state) => {
+    const sent: any[] = [], now = vi.spyOn(Date, 'now');
+    try {
+      now.mockReturnValue(1_000_000);
+      const { path, feedback } = await bridge((...args) => sent.push(args), { ...state });
+      expect(await exchange(path, feedback)).toMatchObject({ status: 'received' });
+      now.mockReturnValue(2_000_000);
+      expect(await exchange(path, { op: 'status', id: feedback.id })).toMatchObject({ status: 'received' });
+      expect(await exchange(path, feedback)).toMatchObject({ status: 'received' }); expect(sent).toHaveLength(1);
+    } finally { now.mockRestore(); }
   });
 });

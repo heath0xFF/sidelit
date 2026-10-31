@@ -79,8 +79,8 @@ If no session appears, run `sidelit doctor --project .` from the project directo
 ## What to know
 
 - **Your files stay yours.** Local files are the shared interface. The app uses Tauri/Rust and the OS webview, without Electron or a Node sidecar. Local previews work offline; Pi's model connection is separate.
-- **Reading and editing are separate.** Ordinary Markdown has an explicit local **Edit** mode. Markdown with Mermaid diagrams or HTML comments is read-only in Rendered; use **Source** to edit it. Comments stay hidden and unchanged. This is separate from asking Pi to Edit.
-- **Preview scope is deliberate.** Standalone MDX imports need your development server. Server inspection requires the opt-in bridge. Static HTML/MDX and diagrams run in an isolated preview, not the privileged app view.
+- **Reading and editing are separate.** Markdown opens in the rich editor, with **Edit** for local changes and **Source** for exact control. Diagrams draw in place. Raw HTML shows as plain text and comments stay hidden; both stay unchanged when you edit around them. MDX edits as source beside a live render. This is separate from asking Pi to Edit.
+- **Preview scope is deliberate.** Standalone MDX imports need your development server. Server inspection requires the opt-in bridge. Static HTML/MDX runs in an isolated preview, not the privileged app view.
 - **Review at your own pace.** Send a quick request, or choose **Add to review** to save notes locally while you read. Open **Notes**, select notes from one project, check the payload, and choose a Pi session. A batch is one message; retries keep its ID and destination. Saved notes survive restart; quick requests do not.
 
 ## Go deeper

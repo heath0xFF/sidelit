@@ -142,7 +142,17 @@ jobs:
 
           **This release is ad-hoc signed, not Apple-notarized.** If macOS blocks the first launch, use **System Settings → Privacy & Security → Open Anyway** for Sidelit, only if you trust this download. Do not disable Gatekeeper.
 
-          **New in 0.4.2: warm accents and a matching welcome icon.**
+          **New in 0.5.0: one rich editor for Markdown, and live MDX.**
+
+          - **No more read-only Markdown preview.** Markdown opens in the rich editor unless it would lose something there. Fence metadata, byte-order marks, unclosed frontmatter, non-web link schemes, and files over 256 KiB open in Source.
+          - **Diagrams in place.** Mermaid draws inside the rich editor and follows the theme. A broken diagram shows an error, and its toggle reveals the code. An extremely complex diagram can stall the window.
+          - **Raw HTML, math, and comments are kept.** Raw HTML and math show as plain text and comments stay hidden. All stay byte-for-byte unchanged when you edit around them. Reference links become inline links on the first rich edit, with the same targets.
+          - **Live MDX.** MDX shows Source beside a render that updates as you type. A syntax error keeps the last good render on screen.
+          - **Ask from Source.** Selecting text in Source now offers Explain, Review, and Edit, with the exact line.
+          - **Clearer Pi failures.** A request Pi never started now fails after about 10 seconds, and retrying sends it again. Run `/reload` in Pi after updating.
+          - **Fixes.** Workspace file operations no longer block each other, CSS in HTML previews is no longer corrupted by `$` sequences, and DOMPurify and KaTeX are patched.
+
+          **Included from 0.4.2: warm accents and a matching welcome icon.**
 
           - Amber actions in Dark and burnt-orange actions in Light match The Fold icon. Charcoal surfaces and syntax colors are unchanged.
           - Links, focus rings, editor selections, diagrams, and preview highlights use the new accents. Button labels, selected text, and errors have tested contrast in both themes.
