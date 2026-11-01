@@ -1,0 +1,39 @@
+any other suggestions?
+
+---
+
+ok let's get those small fixes in and then build in those 4 things
+
+---
+
+also can you make sure to enable and start using entire please?
+
+---
+
+ok we need to figure out a better way to test things. right now the whole app launches and takes over any active window i'm working in.
+
+---
+
+yeah i mean i can do the ui tests myself before we package a release i just need to not have or lose focus of my windows while we're testing this app
+
+---
+
+[Image #1]
+
+i'm getting some weird width formatting in the html in ../liquid-finetune/docs/learn.html
+
+---
+
+ohhhh ok that's what i thought it was going to be rather than something with sidelit, thanks for confirming
+
+---
+
+is there a world where we enable the send-to-agent workflow to all agents? claude/codex/etc.?
+
+---
+
+can you review orca's code and see how they do it? https://github.com/stablyai/orca/
+
+---
+
+i think we should just add something like this to the roadmap
