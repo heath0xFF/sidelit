@@ -1,6 +1,6 @@
 # Verification
 
-## Background test runs — unreleased
+## v0.7.0 background test runs
 
 Packaged test runs used to activate the app and put a window over whatever was in front, which also
 made AeroSpace retile. `desktop-test` builds now run as a background process with a transparent,
@@ -18,7 +18,7 @@ windows at the end of each run.
 - Not exercised in background mode: real activation, the Dock, the menu bar, native dialogs, or a window
   really losing focus, because `isKeyWindow` is forced. `SIDELIT_TEST_VISIBLE=1` was not run either.
 
-## Saved marks, request changes, walkthroughs, Find — unreleased
+## v0.7.0 saved marks, request changes, walkthroughs, Find
 
 Marks saved across close and restart; rewritten syntax no longer marked; math drawn from its
 Markdown source; documents that changed during a request; `--note` and `--then`; ⌘F in the rich editor.

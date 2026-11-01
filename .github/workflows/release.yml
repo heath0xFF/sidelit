@@ -142,18 +142,29 @@ jobs:
 
           **This release is ad-hoc signed, not Apple-notarized.** If macOS blocks the first launch, use **System Settings → Privacy & Security → Open Anyway** for Sidelit, only if you trust this download. Do not disable Gatekeeper.
 
-          **New in 0.6.0: see what Pi changed, and tell it what you're looking at.**
+          **New in 0.7.0: marks that last, what changed during a request, and guided walkthroughs.**
 
-          - **Marked changes.** When a file changes on disk, changed passages get a margin bar, changed words are highlighted, and removed passages show struck through. Step with F8 and Shift+F8, revert one passage into your draft, compare, or mark it reviewed. Marks last until the tab closes or the app quits, and a first rich edit can normalize Markdown and show up as changes.
+          - **Marks last.** Marked changes come back after you close a tab or restart, until you choose **Mark reviewed**. Sidelit keeps a private copy of the version you last reviewed on this computer. Files over 2 MiB are not saved.
+          - **Only real changes are marked.** A rich edit that respells Markdown, such as bullet style, emphasis, or setext headings, no longer marks those passages.
+          - **What changed during a request.** When Pi finishes, Sidelit lists the project's documents that differ from when you sent it. Open one to see only that request's marks, or compare it with the version from when you sent it. These files changed during the request, not necessarily because of it, and Pi finishing does not mean the request succeeded.
+          - **Walkthroughs.** Agents can lead you through a document with `--find` and `--note`, and add stops from other files with `--then`. A bar shows each stop's note, with **Previous**, **Next** (Shift+F9 and F9), and **Done**.
+          - **Find in the rich editor.** Cmd+F searches across bold, italics, and code blocks. Enter or Cmd+G goes to the next match. Find never changes the document.
+          - **Math from source.** Drawn math now reads the Markdown source, so `\{a\}` draws braces and `\$y\$` stays text. The file never changes.
+
+          **Agent users:** run `sidelit setup --pi --skill` after updating so agents learn `--note` and `--then`.
+
+          **Included from 0.6.0: see what Pi changed, and tell it what you're looking at.**
+
+          - **Marked changes.** When a file changes on disk, changed passages get a margin bar, changed words are highlighted, and removed passages show struck through. Step with F8 and Shift+F8, revert one passage into your draft, compare, or mark it reviewed.
           - **Send your unsaved draft.** **Include my unsaved changes** sends up to 12 KiB of them with a request.
           - **Pi finished.** Requests and the toolbar show when Pi finishes its turn, with **Show changes**. Finishing does not mean the request succeeded.
           - **Agents can point.** `sidelit --find "text" -- file` opens a file and marks the first match in the rich editor, Source, or HTML.
           - **Outline and anchors.** The sidebar lists headings, and links follow heading anchors within a file and across documents.
           - **Git status.** The file tree shows changed and new documents, and **Changed** compares them with the last commit. It reads the repository through libgit2 and never runs `git`.
-          - **Math while reading.** `$…$` and `$$…$$` draw in the rich editor and show their source when you edit. The file never changes. `$5` and `$HOME` stay text; commands like `\{` lose their backslash when drawn because Markdown treats them as escapes.
+          - **Math while reading.** `$…$` and `$$…$$` draw in the rich editor and show their source when you edit. The file never changes. `$5` and `$HOME` stay text.
           - **Fix.** A document ending in a code block or table could be marked unsaved after a reload and a click.
 
-          **Pi users:** after updating, run `sidelit setup --pi --skill`, then `/reload` in each Pi session. Draft attachment and **Pi finished** need the updated extension.
+          **Pi users coming from before 0.6.0:** run `/reload` in each Pi session after setup. Draft attachment and **Pi finished** need the updated extension.
 
           **Included from 0.5.0: one rich editor for Markdown, and live MDX.**
 
