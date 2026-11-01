@@ -1,0 +1,57 @@
+{
+  "cli_version": "0.12.2",
+  "checkpoint_id": "01M6CE0V8R955PFKFAEC2ZPT12",
+  "strategy": "manual-commit",
+  "branch": "stillwater-theme",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "AGENTS.md",
+    "DESIGN.md",
+    "VERIFICATION.md",
+    "docs/development.md",
+    "docs/user-guide.md",
+    "extensions/preview-bridge/sidelit.js",
+    "scripts/companion-smoke.py",
+    "scripts/desktop-smoke.py",
+    "scripts/desktop_app.py",
+    "scripts/test_desktop_app.py",
+    "src/App.tsx",
+    "src/Preview.tsx",
+    "src/Source.tsx",
+    "src/appearance.ts",
+    "src/preview-html.ts",
+    "src/style.css",
+    "tests/appearance.test.ts",
+    "tests/palette.test.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 123043,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1369216,
+    "output_tokens": 10892,
+    "api_call_count": 29
+  },
+  "redaction": {
+    "replacements": 2,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 1,
+      "credentialed_uri": 0,
+      "entropy": 1,
+      "key_context": 0,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}

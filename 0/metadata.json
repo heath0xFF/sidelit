@@ -1,0 +1,58 @@
+{
+  "cli_version": "0.12.2",
+  "checkpoint_id": "01M6CE0V8R955PFKFAEC2ZPT12",
+  "session_id": "01a198d4-31fd-700a-9f03-f3b20eb0d1c0",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-01T20:50:07.54264Z",
+  "branch": "stillwater-theme",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [
+    "AGENTS.md",
+    "DESIGN.md",
+    "VERIFICATION.md",
+    "docs/development.md",
+    "docs/user-guide.md",
+    "extensions/preview-bridge/sidelit.js",
+    "scripts/companion-smoke.py",
+    "scripts/desktop-smoke.py",
+    "scripts/desktop_app.py",
+    "scripts/test_desktop_app.py",
+    "src/App.tsx",
+    "src/Preview.tsx",
+    "src/Source.tsx",
+    "src/appearance.ts",
+    "src/preview-html.ts",
+    "src/style.css",
+    "tests/appearance.test.ts",
+    "tests/palette.test.ts"
+  ],
+  "agent": "Pi",
+  "model": "gpt-6-astra",
+  "turn_id": "8cc07ae1666a",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 123043,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1369216,
+    "output_tokens": 10892,
+    "api_call_count": 29
+  },
+  "redaction": {
+    "replacements": 2,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 1,
+      "credentialed_uri": 0,
+      "entropy": 1,
+      "key_context": 0,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  },
+  "session_metrics": {
+    "turn_count": 1
+  }
+}

@@ -1,0 +1,10 @@
+you're on a new branch where i've had claude add a new theme i just created, stillwater. in testing, claude found the following: 
+
+> a desktop run timed out at the "New File" step, which doesn't involve themes. It passed on all four later clean runs, and I didn't find the cause. Two other failures came
+    from a test app I'd left running, and they cleared once I stopped it.
+
+find, and fix please
+
+---
+
+ok merge this into main, tag a release and push
