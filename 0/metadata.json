@@ -1,0 +1,81 @@
+{
+  "cli_version": "0.12.2",
+  "checkpoint_id": "01M6C6Q5M3DGA6WH2481GW6VFW",
+  "session_id": "63ba0d0b-0899-4217-af05-fb95d5f3d52a",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-01T18:42:33.065352Z",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".github/workflows/release.yml",
+    "VERIFICATION.md",
+    "package.json",
+    "src-tauri/Cargo.lock",
+    "src-tauri/Cargo.toml",
+    "src-tauri/tauri.conf.json"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5-5",
+  "turn_id": "3a2afd0ba5c3",
+  "checkpoint_transcript_start": 2187,
+  "transcript_lines_at_start": 2187,
+  "compact_transcript_start": 290,
+  "token_usage": {
+    "input_tokens": 16,
+    "cache_creation_tokens": 12919,
+    "cache_read_tokens": 1260563,
+    "output_tokens": 6743,
+    "api_call_count": 6
+  },
+  "redaction": {
+    "replacements": 6,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 4,
+      "credentialed_uri": 0,
+      "entropy": 2,
+      "key_context": 0,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_01Sn9ugG3pJspKCmDqW3kNxd",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "sidelit"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "61f8471d8b11",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 846,
+        "end": 847,
+        "entry_ids": [
+          "210d9d71-8189-44e4-8b90-c8f42c49b5df"
+        ],
+        "tool_use_id": "toolu_01Sn9ugG3pJspKCmDqW3kNxd"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01Sn9ugG3pJspKCmDqW3kNxd"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: sidelit",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 13
+  }
+}
