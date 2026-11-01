@@ -1,6 +1,6 @@
 import { useEffect, useImperativeHandle, useRef, type Ref } from "react";
 import { api } from "./api";
-import { MONOSPACE_FONT } from "./appearance";
+import { MONOSPACE_FONT, type ResolvedTheme } from "./appearance";
 import type { EditorHistory } from "./history";
 import * as monaco from "monaco-editor/editor/editor.api.js";
 import "monaco-editor/languages/definitions/markdown/register.js";
@@ -15,11 +15,11 @@ import EditorWorker from "monaco-editor/editor/editor.worker.js?worker";
 self.MonacoEnvironment = { getWorker: () => new EditorWorker() };
 const views = new Map<string, monaco.editor.ICodeEditorViewState>();
 const models = new Map<string, monaco.editor.ITextModel>();
-function applyTheme(dark: boolean) {
+function applyTheme(theme: ResolvedTheme) {
   const style = getComputedStyle(document.documentElement);
   const color = (name: string) => style.getPropertyValue(`--${name}`).trim();
   monaco.editor.defineTheme("sidelit-one", {
-    base: dark ? "vs-dark" : "vs",
+    base: theme === "light" ? "vs" : "vs-dark",
     inherit: true,
     rules: [
       { token: "", foreground: color("text").slice(1) },
@@ -34,13 +34,21 @@ function applyTheme(dark: boolean) {
       { token: "type", foreground: color("syntax-type").slice(1) },
       { token: "variable", foreground: color("syntax-variable").slice(1) },
       { token: "string.link", foreground: color("accent").slice(1) },
+      ...(theme === "stillwater"
+        ? [
+            { token: "tag", foreground: color("syntax-function").slice(1) },
+            { token: "metatag", foreground: color("syntax-function").slice(1) },
+            { token: "attribute.name", foreground: color("syntax-type").slice(1) },
+            { token: "attribute.value", foreground: color("syntax-string").slice(1) },
+          ]
+        : []),
     ],
     colors: {
       "editor.background": color("paper"),
       "editor.foreground": color("text"),
       "editorLineNumber.foreground": color("muted"),
       "editorLineNumber.activeForeground": color("text"),
-      "editorCursor.foreground": color("accent"),
+      "editorCursor.foreground": color("cursor"),
       "editor.selectionBackground": color("selected"),
       "editor.inactiveSelectionBackground": color("selected"),
       "editor.lineHighlightBackground": color("chrome"),
@@ -53,10 +61,18 @@ function applyTheme(dark: boolean) {
       "input.border": color("line"),
       focusBorder: color("accent"),
       "diffEditor.border": color("line"),
-      "diffEditorGutter.insertedLineBackground": "#98c37922",
-      "diffEditorGutter.removedLineBackground": "#e06c7522",
-      "diffEditor.insertedTextBackground": "#98c37933",
-      "diffEditor.removedTextBackground": "#e06c7533",
+      "diffEditorGutter.insertedLineBackground": `${color("diff-inserted")}22`,
+      "diffEditorGutter.removedLineBackground": `${color("diff-removed")}22`,
+      "diffEditor.insertedTextBackground": `${color("diff-inserted")}33`,
+      "diffEditor.removedTextBackground": `${color("diff-removed")}33`,
+      ...(theme === "stillwater"
+        ? {
+            "editorBracketHighlight.foreground1": color("syntax-number"),
+            "editorBracketHighlight.foreground2": color("syntax-keyword"),
+            "editorBracketHighlight.foreground3": color("syntax-function"),
+            "editorBracketHighlight.unexpectedBracket.foreground": color("error"),
+          }
+        : {}),
     },
   });
   monaco.editor.setTheme("sidelit-one");
@@ -70,7 +86,7 @@ export default function Source({
   path,
   text,
   onChange,
-  dark,
+  theme,
   fontSize,
   original,
   readOnly = false,
@@ -84,7 +100,7 @@ export default function Source({
   path: string;
   text: string;
   onChange: (text: string) => void;
-  dark: boolean;
+  theme: ResolvedTheme;
   fontSize: number;
   original?: string;
   readOnly?: boolean;
@@ -136,7 +152,7 @@ export default function Source({
       models.set(path, model);
     }
     if (model.getValue() !== text) model.setValue(text);
-    applyTheme(dark);
+    applyTheme(theme);
     const options = {
       automaticLayout: true,
       readOnly,
@@ -245,8 +261,8 @@ export default function Source({
     code.revealRangeInCenter(match.range);
   }, [jump?.nonce]);
   useEffect(() => {
-    applyTheme(dark);
-  }, [dark]);
+    applyTheme(theme);
+  }, [theme]);
   useEffect(() => {
     editor.current?.updateOptions({ readOnly });
   }, [readOnly]);

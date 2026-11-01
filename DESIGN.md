@@ -152,6 +152,8 @@ Source of truth: `src/style.css`, `src/App.tsx`, `src/Rich.tsx`, `src/SelectionA
 
 Dark uses blue-charcoal surfaces with amber accents and amber buttons with dark text. Light keeps the same hierarchy on cool pale surfaces, with burnt-orange buttons and white text. Unprefixed frontmatter tokens describe Dark; `light-*` entries are Light overrides. The sidebar uses chrome.
 
+Stillwater is an opt-in theme that matches the terminal theme of the same name, so Sidelit reads as one surface beside a Stillwater terminal. Its paper is the terminal's background and its chrome is raised above that paper, because a frame darker than the document makes the document look lighter than the terminal next to it. Frost serves actions, focus, and links, as it does for links in the Neovim port. Orchid is reserved for the cursor and syntax keywords, keeping the terminal's single loud color. It exempts this theme from warm accents in the State Color Rule. Its values live in the `:root[data-theme="stillwater"]` block of `src/style.css`, and `tests/palette.test.ts` holds them to the same contrast pairs. Change the terminal theme's palette first, then copy the values here.
+
 ### Primary
 
 Accent colors serve links, Save, focus rings, inspection outlines, and unsaved dots. The action fill serves primary buttons and the open-sidebar toggle. Use the theme's on-action color for button text and inset focus rings: dark brown in Dark, white in Light.

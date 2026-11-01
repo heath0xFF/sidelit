@@ -18,6 +18,8 @@ describe("appearance preferences", () => {
   it("respects explicit themes independently of the OS", () => {
     expect(resolvedTheme(themePreference("light"), true)).toBe("light");
     expect(resolvedTheme(themePreference("dark"), false)).toBe("dark");
+    expect(resolvedTheme(themePreference("stillwater"), false)).toBe("stillwater");
+    expect(resolvedTheme(themePreference("stillwater"), true)).toBe("stillwater");
   });
   it("bounds font sizes and recovers from invalid stored values", () => {
     for (const value of [null, "", " ", "not a size", "Infinity"])

@@ -24,6 +24,10 @@
   --syntax-function: #326ac6;
   --syntax-variable: #b83a34;
   --syntax-type: #805500;
+  --cursor: var(--accent);
+  --inline-code: var(--syntax-variable);
+  --diff-inserted: #98c379;
+  --diff-removed: #e06c75;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -66,6 +70,36 @@
   color-scheme: dark;
   color: var(--text);
   background: var(--paper);
+}
+/* The terminal theme of the same name: https://github.com/heath0xFF/stillwater */
+:root[data-theme="stillwater"] {
+  --paper: #1f222e;
+  --chrome: #252937;
+  --sidebar: #252937;
+  --hover: #2b303f;
+  --active: #343a4d;
+  --rule: #2f3344;
+  --text: #dfe3ed;
+  --muted: #9da5bf;
+  --line: #464d66;
+  --accent: #74cde2;
+  --action: #74cde2;
+  --action-hover: #95dded;
+  --on-action: #1f222e;
+  --selected: #464d66;
+  --warning: #403d38;
+  --error: #f38a7f;
+  --syntax-keyword: #ec8ac7;
+  --syntax-string: #70d689;
+  --syntax-number: #eec96e;
+  --syntax-function: #8994e5;
+  --syntax-variable: #dfe3ed;
+  --syntax-type: #74cde2;
+  --cursor: #ec8ac7;
+  --inline-code: #70d689;
+  --diff-inserted: #70d689;
+  --diff-removed: #ec7368;
+  color-scheme: dark;
 }
 * {
   box-sizing: border-box;
@@ -114,7 +148,7 @@ a {
 }
 input,
 textarea {
-  caret-color: var(--accent);
+  caret-color: var(--cursor);
 }
 .app {
   height: 100vh;
@@ -748,7 +782,7 @@ textarea {
   --crepe-color-hover: var(--hover);
   --crepe-color-selected: var(--selected);
   --crepe-color-inline-area: var(--chrome);
-  --crepe-color-inline-code: var(--syntax-variable);
+  --crepe-color-inline-code: var(--inline-code);
   --crepe-color-error: var(--error);
   --crepe-font-default: var(--font-prose);
   --crepe-font-title: var(--font-prose);
@@ -766,7 +800,7 @@ textarea {
   outline: none;
   font-size: var(--document-font-size);
   line-height: 1.5;
-  caret-color: var(--accent);
+  caret-color: var(--cursor);
 }
 .milkdown .ProseMirror :is(h1, h2, h3, h4, h5, h6) {
   padding: 0;

@@ -1,5 +1,19 @@
 # Verification
 
+## v0.7.1 Stillwater theme
+
+Stillwater is a fourth choice under Actions → Theme, matching the terminal theme of the same name. It is opt-in; new installations still default to Dark, and System still chooses between Light and Dark.
+
+- `pnpm check` and `pnpm test` pass (242 tests). `tests/palette.test.ts` holds Stillwater to the same pairs as Light and Dark, 4.5:1 for text and 3:1 for actions and focus, and checks that the isolated MDX stylesheet agrees with the shell.
+- In packaged WKWebView, `scripts/desktop-smoke.py` checks the shell text color, the saved preference, and Monaco's background under Stillwater, and that switching themes does not remount Crepe or Monaco or dirty a document. `scripts/companion-smoke.py` checks that switching does not remount MDX.
+- Desktop passed three runs in a row from a clean start, and companion, feedback, and review each passed.
+- The `New File tab` timeout was a test race: Discard dismisses the dialog before native Close and the session write finish. The test sent ⌘N while the app was still locked. A held Close response reproduced the dropped command. The test now checks that pending Close blocks New File, then waits for the app to unlock before sending it again.
+- The earlier `welcome icon` failures came from a test app left running. Desktop deliberately left its app open, and failure paths had no cleanup. Desktop and companion now reject a running test app and stop their own app on success or failure. Seven Python tests cover this lifecycle. A packaged check also confirmed that both scripts reject an existing app without stopping it, and that an injected failure leaves no app running.
+- After these fixes, desktop passed twice and companion passed directly after desktop, with no manual app cleanup. All runs recorded zero focus steals and zero visible windows.
+- Inspected Stillwater captures of the rendered editor, Source, Compare with a disk conflict, Actions, a Mermaid diagram, and the MDX split. These are in ignored `test-results/`.
+- Release checks at 0.7.1: frozen pnpm install, TypeScript, 242 frontend tests, seven Python cleanup tests, Rust format/check, and 38 Rust tests passed. The ordinary Apple Silicon app and DMG built without `desktop-test`. Packaged smoke checks above ran before the version bump; the release workflow builds the universal artifacts from the tag.
+- Not checked: the Stillwater look in a visible window, real activation, or HTML pages, which keep their own styling.
+
 ## v0.7.0 background test runs
 
 Packaged test runs used to activate the app and put a window over whatever was in front, which also

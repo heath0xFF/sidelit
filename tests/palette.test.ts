@@ -14,9 +14,9 @@ function contrast(foreground: string, background: string) {
 
 describe('The Fold palette contrast', () => {
   const shell = readFileSync('src/style.css', 'utf8');
-  const blocks = [...shell.matchAll(/:root(?:\[data-theme="dark"\])?\s*\{([^}]+)\}/g)]
+  const blocks = [...shell.matchAll(/:root(?:\[data-theme="(?:dark|stillwater)"\])?\s*\{([^}]+)\}/g)]
     .map(match => Object.fromEntries([...match[1].matchAll(/--([\w-]+):\s*(#[\da-f]{6});/g)].map(match => [match[1], match[2]])));
-  for (const [index, theme] of ['light', 'dark'].entries()) {
+  for (const [index, theme] of ['light', 'dark', 'stillwater'].entries()) {
     it(`keeps ${theme} shell and editor text readable`, () => {
       const colors = { ...blocks[0], ...blocks[index] };
       const pairs = [['text', 'paper'], ['muted', 'paper'], ['muted', 'chrome'], ['accent', 'paper'], ['accent', 'chrome'], ['accent', 'selected'], ['on-action', 'action'], ['on-action', 'action-hover'], ['text', 'selected'], ['text', 'warning'], ['error', 'paper'], ['error', 'chrome'], ['error', 'warning']];
@@ -35,7 +35,7 @@ describe('The Fold palette contrast', () => {
     });
     it(`keeps ${theme} preview links, diagrams, and selections aligned with the shell`, () => {
       const colors = { ...blocks[0], ...blocks[index] };
-      const prefix = theme === 'light' ? 'html[data-theme=light] ' : '';
+      const prefix = theme === 'dark' ? '' : `html[data-theme=${theme}] `;
       expect(mdxStyle).toContain(`${prefix}a{color:${colors.accent}}`);
       expect(mdxStyle).toContain(`--pele-accent:${colors.accent};`);
       expect(mdxStyle).toContain(`${prefix}::selection{background:${colors.selected};color:${colors.text}}`);
@@ -43,10 +43,10 @@ describe('The Fold palette contrast', () => {
     it(`keeps ${theme} MDX syntax readable in the isolated stylesheet`, () => {
       const colors: Record<string, string> = {};
       const rules = mdxStyle.split('}').map(rule => rule.split('{')).filter(([selector]) => selector.includes('.tok-'));
-      for (const explicitLight of [false, true]) {
-        if (explicitLight && theme !== 'light') continue;
+      // Unprefixed rules are Dark; each other theme overrides them with its own prefix.
+      for (const prefix of theme === 'dark' ? [''] : ['', `data-theme=${theme}`]) {
         for (const rule of rules) {
-          if (rule[0].includes('data-theme=light') !== explicitLight) continue;
+          if (prefix ? !rule[0].includes(prefix) : rule[0].includes('data-theme')) continue;
           const color = rule[1].match(/(?:^|;)color:(#[\da-f]{6})/)?.[1];
           if (color) for (const token of rule[0].matchAll(/\.tok-([\w]+)/g)) colors[token[1]] = color;
         }

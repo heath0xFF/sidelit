@@ -5,7 +5,6 @@ import http.server
 import json
 import os
 from pathlib import Path
-import plistlib
 import shutil
 import subprocess
 import tempfile
@@ -13,12 +12,11 @@ import threading
 import time
 import urllib.request
 
+from desktop_app import isolated_app
 from focus_guard import FocusGuard
 
 ROOT = Path(__file__).resolve().parent.parent
 BINARY = Path(os.environ['SIDELIT_TEST_BINARY'])
-with (BINARY.parents[1] / 'Info.plist').open('rb') as info:
-    assert plistlib.load(info)['CFBundleIdentifier'] != 'app.sidelit.desktop', 'Use an isolated desktop-test bundle'
 OUT = ROOT / 'test-results'
 OUT.mkdir(exist_ok=True)
 
@@ -58,7 +56,7 @@ addEventListener('message', e => {
 });
 '''
 
-with tempfile.TemporaryDirectory(prefix='sidelit-companion-') as temp:
+with isolated_app(BINARY), tempfile.TemporaryDirectory(prefix='sidelit-companion-') as temp:
     folder = Path(temp).resolve()
     (folder / 'css').mkdir()
     (folder / 'css/theme.css').write_text('h1 { padding: 12px; color: rgb(120,180,240) }')
@@ -232,6 +230,10 @@ with tempfile.TemporaryDirectory(prefix='sidelit-companion-') as temp:
             assert js('return document.querySelector("iframe").src') == original_frame, 'appearance must not remount MDX'
             time.sleep(.2)
             capture('companion-mdx-light.png')
+            value('select[aria-label="Theme"]', 'stillwater')
+            assert js('return document.querySelector("iframe").src') == original_frame, 'appearance must not remount MDX'
+            time.sleep(.2)
+            capture('companion-mdx-stillwater.png')
             value('select[aria-label="Theme"]', 'dark')
             time.sleep(.2)
             capture('companion-mdx.png')
@@ -276,13 +278,8 @@ with tempfile.TemporaryDirectory(prefix='sidelit-companion-') as temp:
             assert not js('return __previewEvents.some(e=>e.data.type==="text")'), 'disabled bridge must stop selection events'
             assert not js('return __errors'), js('return __errors')
             print(json.dumps({'result': 'PASS', 'pi': 'real runtime, offline deterministic model, real edit tool', 'rexBlock': target.get('blockId'), 'checks': ['sandbox script opt-in', 'no IPC or parent access', 'relative CSS/image assets', 'asset watcher', 'HTML/MDX/dev-server scroll restoration', 'nested scroll and inserted-content anchors', 'text and DOM selection', 'viewport', 'busy Pi follow-up and consumption ack', 'live agent edit refresh at reading position', 'real MDX', 'MDX import errors', 'development bridge enable/disable']}, indent=2), flush=True)
-            try: js('setTimeout(()=>window.__TAURI_INTERNALS__.invoke("quit"),100)')
-            except (ConnectionError, urllib.error.URLError): pass
             print(json.dumps(guard.check()))
         finally:
-            try:
-                if 'js' in locals(): js('setTimeout(()=>window.__TAURI_INTERNALS__.invoke("quit"),100)')
-            except (ConnectionError, urllib.error.URLError): pass
             if server: server.shutdown()
             if pi.poll() is None:
                 pi.stdin.close()

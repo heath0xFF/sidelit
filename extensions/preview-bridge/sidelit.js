@@ -215,7 +215,8 @@
     const firstConnection = !token;
     token = event.data.token; hostOrigin = event.origin; inspect = !!event.data.inspect;
     if (document.getElementById('sidelit-mdx') && event.data.appearance) {
-      document.documentElement.dataset.theme = event.data.appearance.dark === false ? 'light' : 'dark';
+      const theme = event.data.appearance.theme;
+      document.documentElement.dataset.theme = theme === 'light' || theme === 'stillwater' ? theme : 'dark';
       const size = Number(event.data.appearance.fontSize);
       if (Number.isFinite(size)) document.body.style.fontSize = Math.max(12, Math.min(28, size)) + 'px';
     }

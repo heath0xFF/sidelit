@@ -4,7 +4,6 @@ import base64
 import json
 import os
 from pathlib import Path
-import plistlib
 import re
 import signal
 import shutil
@@ -13,13 +12,11 @@ import tempfile
 import time
 import urllib.request
 
+from desktop_app import isolated_app
 from focus_guard import FocusGuard
 
 ROOT = Path(__file__).resolve().parent.parent
 BINARY = Path(os.environ.get('SIDELIT_TEST_BINARY', ROOT / 'src-tauri/target/release/bundle/macos/Sidelit.app/Contents/MacOS/sidelit'))
-with (BINARY.parents[1] / 'Info.plist').open('rb') as info:
-    identifier = plistlib.load(info)['CFBundleIdentifier']
-assert identifier != 'app.sidelit.desktop', 'Set SIDELIT_TEST_BINARY to an isolated desktop-test bundle; this test kills its app.'
 BASE = 'http://127.0.0.1:4445'
 OUT = ROOT / 'test-results'
 OUT.mkdir(exist_ok=True)
@@ -54,7 +51,7 @@ def launch(*args, cwd=ROOT):
     return round(time.monotonic() - start, 3)
 
 
-with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
+with isolated_app(BINARY) as identifier, tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     folder = Path(tmp)
     shutil.copytree(ROOT / 'samples', folder / 'notes')
     folder = (folder / 'notes').resolve()
@@ -151,6 +148,10 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     set_size(17)
     assert js('return document.querySelector(".app-menu").open'), 'appearance controls stay open'
     set_size(16)
+    set_theme('stillwater')
+    time.sleep(.3)
+    screenshot('actions-stillwater.png')
+    set_theme('dark')
     js('document.querySelector(".font-size-value").dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true,cancelable:true}))')
     assert not js('return document.querySelector(".app-menu").open')
     assert js('return document.activeElement.matches(".app-menu summary")'), 'Escape returns focus'
@@ -169,6 +170,10 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     assert js('return getComputedStyle(document.querySelector(".ProseMirror p")).fontSize') == '20px'
     set_theme('dark')
     assert js('return getComputedStyle(document.querySelector(".main")).color') == 'rgb(213, 214, 223)'
+    set_theme('stillwater')
+    assert js('return getComputedStyle(document.querySelector(".main")).color') == 'rgb(223, 227, 237)'
+    assert js('return localStorage.getItem("themePreference")') == 'stillwater'
+    set_theme('dark')
     assert js('return document.querySelector(".ProseMirror")===__richEditor'), 'appearance changes must not remount Crepe'
     assert not js('return !!document.querySelector(".dirty-dot")')
     js('window.dispatchEvent(new KeyboardEvent("keydown",{key:"-",metaKey:true,bubbles:true,cancelable:true}))')
@@ -186,6 +191,10 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     wait(lambda: js('return getComputedStyle(document.querySelector(".monaco-editor-background")).backgroundColor') == 'rgb(250, 250, 253)', 'Monaco Light')
     set_theme('dark')
     wait(lambda: js('return getComputedStyle(document.querySelector(".monaco-editor-background")).backgroundColor') == 'rgb(51, 54, 67)', 'Monaco Dark')
+    set_theme('stillwater')
+    wait(lambda: js('return getComputedStyle(document.querySelector(".monaco-editor-background")).backgroundColor') == 'rgb(31, 34, 46)', 'Monaco Stillwater')
+    set_theme('dark')
+    wait(lambda: js('return getComputedStyle(document.querySelector(".monaco-editor-background")).backgroundColor') == 'rgb(51, 54, 67)', 'Monaco back to Dark')
     assert js('return document.querySelector(".monaco-editor")===__sourceEditor'), 'appearance changes must not remount Monaco'
     assert not js('return !!document.querySelector(".dirty-dot")')
     set_size(16)
@@ -280,6 +289,10 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     time.sleep(1)
     assert js('return __workers.some(url=>url.includes("editor.worker"))'), js('return __workers')
     screenshot('compare.png')
+    set_theme('stillwater')
+    time.sleep(.3)
+    screenshot('compare-stillwater.png')
+    set_theme('dark')
     click('Reload from Disk')
     wait(lambda: js('return !!document.querySelector("dialog[open]")'), 'discard warning')
     click('Cancel')
@@ -348,6 +361,10 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     js('document.querySelector(".rich-editor").scrollTop=0')
     check_column()
     screenshot('rendered.png')
+    set_theme('stillwater')
+    time.sleep(.3)
+    screenshot('rendered-stillwater.png')
+    set_theme('dark')
     launch('Lists.md', cwd=folder)
     wait(lambda: 'Lists that stay in line' in body(), 'list fixture')
     for size in [12, 16, 24, 28]:
@@ -363,6 +380,10 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     wait(lambda: 'A quieter place to think' in body(), 'source screenshot')
     time.sleep(.3)
     screenshot('source.png')
+    set_theme('stillwater')
+    time.sleep(.3)
+    screenshot('source-stillwater.png')
+    set_theme('dark')
     js('const select=document.querySelector("select[aria-label=Theme]");select.value="light";select.dispatchEvent(new Event("change",{bubbles:true}))')
     request(f'/session/{session}/window/rect', {'width': 900, 'height': 680})
     click('Rendered')
@@ -431,6 +452,11 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
         dark_fill = js('const t=document.querySelector(".ProseMirror svg text");return t&&getComputedStyle(t).fill')
         set_theme('light')
         wait(lambda: js('const t=document.querySelector(".ProseMirror svg text");return t&&getComputedStyle(t).fill') != dark_fill, 'diagram colors follow the theme')
+        set_theme('stillwater')
+        wait(lambda: js('const t=document.querySelector(".ProseMirror svg text");return t&&getComputedStyle(t).fill') != dark_fill, 'diagram colors follow Stillwater')
+        time.sleep(.3)
+        screenshot('mermaid-stillwater.png')
+        set_theme('light')
         request(f'/session/{session}/window/rect', {'width': 720, 'height': 630})
         time.sleep(.3)
         screenshot('mermaid-light-narrow.png')
@@ -954,15 +980,23 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     wait(lambda: js('return document.querySelector(".tab.active button[title]")?.title') == str(copied), 'Save As new tab')
     assert not js('return !!document.querySelector(".tab.active .dirty-dot")')
     assert js('return !!document.querySelector(`.tab button[title="${arguments[0]}"]`).closest(".tab").querySelector(".dirty-dot")', str(merge)), 'Save As must keep the original draft'
+    # Hold native Close so the next command cannot depend on machine speed.
+    js('window.__originalClose=__featureApi.close;__featureApi.close=async path=>{await new Promise(resolve=>window.__finishClose=resolve);return __originalClose(path)}')
     js('document.querySelector(`.tab button[title="${arguments[0]}"]`).closest(".tab").querySelector(".tab-close").click()', str(merge))
     wait(lambda: js('return !!document.querySelector("dialog[open]")'), 'original draft discard')
     click('Discard')
     created = folder / 'new-document.md'
     created.write_text('')
-    js('const target=arguments[0];__featureApi.copy=async(path,text)=>{if(path!==null||text!=="")throw new Error("Incorrect new document");return __featureApi.open(target)};window.dispatchEvent(new KeyboardEvent("keydown",{key:"n",metaKey:true,bubbles:true,cancelable:true}))', str(created))
+    wait(lambda: js('return !!window.__finishClose && document.querySelector(".app").inert'), 'native Close pending')
+    js('const target=arguments[0];window.__newCalls=0;__featureApi.copy=async(path,text)=>{__newCalls++;if(path!==null||text!=="")throw new Error("Incorrect new document");return __featureApi.open(target)};window.dispatchEvent(new KeyboardEvent("keydown",{key:"n",metaKey:true,bubbles:true,cancelable:true}))', str(created))
+    assert js('return __newCalls') == 0, 'New File must wait for Close to finish'
+    js('__finishClose()')
+    wait(lambda: js('return !!document.querySelector(".app:not([inert])") && !document.querySelector("dialog[open]")'), 'Close finished before New File')
+    js('window.dispatchEvent(new KeyboardEvent("keydown",{key:"n",metaKey:true,bubbles:true,cancelable:true}))')
     wait(lambda: js('return document.querySelector(".tab.active button[title]")?.title') == str(created), 'New File tab')
+    assert js('return __newCalls') == 1
     assert not js('return !!document.querySelector(".tab.active .dirty-dot")')
-    js('__featureApi.copy=__originalCopy')
+    js('__featureApi.copy=__originalCopy;__featureApi.close=__originalClose')
     launch(merge)
     wait(lambda: js('return document.querySelector(".ProseMirror h1")?.textContent') == 'Clean external update', 'return to clean document')
 
@@ -1037,10 +1071,5 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     report = {**focus, 'handoffSeconds': timing, 'editorReadySeconds': ready_seconds, 'warmHandoffSeconds': warm, 'workers': workers_before_crash + js('return __workers'), 'errors': errors, 'checks': 'Saved marks across close and crash; rewrites not marked; math from source; walkthroughs; Find; Change marks, stepping, revert and undo; math with byte preservation; outline, anchors and --find in the rich editor, Source and HTML; Git marks and commit comparison; comments and raw HTML in the rich editor with byte preservation; Mermaid in the rich editor, invalid diagrams, CRLF no-op save, themes and narrow layout; MDX split with live render, last good render and recovery; Source selection actions; Crepe input; Monaco input; 80% rendered column and narrow gutter; keyboard/menu undo and redo in both editors, code blocks, and search inputs; disk reload history reset; undo/redo disk adoption; read-only history guards; CRLF; no-op save; mode/tab switches; clean refresh; conflict/diff; discard/cancel; rename; delete/recreate; repeated CLI; Unicode/caller cwd; local image and alt fidelity; project README preview/mode/no-op save; user guide rich editing; literal code preserved and HTML examples inert; frontmatter; dirty close/quit cancel; save on close; task/numbered/nested/wrapped list alignment at 12–28px; local fonts; One themes; system preference; live sizing without editor remounts; opaque frontmatter rich editing; sticky Source; scoped Quick Open; background close selection; editable diff and keyboard change acceptance; stale merged-save rejection; clean change review; New/Save As UI (native selection simulated); Save As cancel/failure; recovery checkpoint, process crash, restart, conflict-safe restore (native approval simulated), and deletion'}
     (OUT / 'desktop.json').write_text(json.dumps(report, indent=2))
     print(json.dumps(report, indent=2))
-    # Close only the temporary documents; the app remains available for manual checks.
-    for _ in range(12):
-        js('const b=[...document.querySelectorAll(".tab-close")].find(b=>b.closest(".tab").querySelector("button[title]").title.startsWith(arguments[0]));if(b)b.click()', str(folder))
-        time.sleep(.2)
     set_theme('system')
     set_size(16)
-    launch(ROOT / 'samples')

@@ -21,6 +21,10 @@ html[data-theme=light] .sidelit-diagram{--pele-bg:#fafafd;--pele-fg:#363744;--pe
 .sidelit-diagram>div{overflow:auto}.sidelit-diagram summary{cursor:pointer;color:var(--pele-muted)}.sidelit-diagram summary:focus-visible{outline:2px solid var(--pele-accent);outline-offset:2px}
 .sidelit-diagram [role=status]{color:var(--pele-error);overflow-wrap:anywhere}
 .tok-keyword{color:#d797e6}.tok-string{color:#98c379}.tok-number,.tok-bool{color:#d19a66}.tok-comment{color:#a5a7b8}.tok-variableName{color:#f08c95}.tok-typeName{color:#e5c07b}
+html[data-theme=stillwater] body{color:#dfe3ed;background:#1f222e}html[data-theme=stillwater] pre{background:#252937}html[data-theme=stillwater] a{color:#74cde2}html[data-theme=stillwater] ::selection{background:#464d66;color:#dfe3ed}
+html[data-theme=stillwater] th,html[data-theme=stillwater] td,html[data-theme=stillwater] blockquote,html[data-theme=stillwater] .sidelit-callout,html[data-theme=stillwater] .sidelit-card{border-color:#464d66}html[data-theme=stillwater] .sidelit-badge{background:#2b303f}
+html[data-theme=stillwater] .tok-keyword{color:#ec8ac7}html[data-theme=stillwater] .tok-string{color:#70d689}html[data-theme=stillwater] .tok-number,html[data-theme=stillwater] .tok-bool{color:#eec96e}html[data-theme=stillwater] .tok-comment{color:#9da5bf}html[data-theme=stillwater] .tok-variableName{color:#dfe3ed}html[data-theme=stillwater] .tok-typeName{color:#74cde2}
+html[data-theme=stillwater] .sidelit-diagram{--pele-bg:#1f222e;--pele-fg:#dfe3ed;--pele-muted:#9da5bf;--pele-line:#9da5bf;--pele-surface:#252937;--pele-surface-alt:#2b303f;--pele-border:#464d66;--pele-accent:#74cde2;--pele-error:#f38a7f}
 `;
 const isLocal = (ref: string) => !!ref && !/^(?:[a-z][\w+.-]*:|\/\/|#)/i.test(ref);
 const fileUrl = (path: string) => 'file://' + path.split('/').map(encodeURIComponent).join('/');

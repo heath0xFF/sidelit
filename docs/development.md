@@ -82,7 +82,9 @@ cargo test --manifest-path src-tauri/Cargo.toml
 pnpm tauri build
 ```
 
-For packaged WKWebView automation, use an isolated test bundle. The test deliberately kills and restarts its app to check recovery.
+For packaged WKWebView automation, use an isolated test bundle. Run the smoke scripts one at a time; they share WebDriver port 4445. The desktop test deliberately kills and restarts its app to check recovery. Desktop and companion reject an already running test app and stop their own app on success or failure. They do not stop an app left by an earlier run; stop that app before trying again.
+
+Check the test-app cleanup with `python3 -m unittest discover -s scripts -p 'test_desktop_app.py'`.
 
 A `desktop-test` bundle runs in the background: it never activates, its window is transparent and clicks pass through it, it has no Dock icon, and AeroSpace does not tile it, so you can keep working during a run. `scripts/focus_guard.py` fails a run if the app was ever frontmost or left a visible window. Set `SIDELIT_TEST_VISIBLE=1` to watch a test in a normal window; that window does take focus, and the guard is off. Background runs force key-window status, so they do not exercise real activation, the Dock, the menu bar, or native dialogs.
 

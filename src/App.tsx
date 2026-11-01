@@ -330,7 +330,8 @@ export default function App() {
   const [size, setSize] = useState(() =>
     savedFontSize(localStorage.getItem("fontSize")),
   );
-  const dark = resolvedTheme(theme, systemDark) === "dark";
+  const resolved = resolvedTheme(theme, systemDark);
+  const dark = resolved !== "light";
   const changeSize = (delta: number) =>
     setSize((current) => fontSize(current + delta));
   const workspaceRef = useRef(workspace);
@@ -671,12 +672,12 @@ export default function App() {
     return () => media.removeEventListener("change", update);
   }, []);
   useLayoutEffect(() => {
-    document.documentElement.dataset.theme = dark ? "dark" : "light";
+    document.documentElement.dataset.theme = resolved;
     document.documentElement.style.setProperty(
       "--document-font-size",
       `${size}px`,
     );
-  }, [dark, size]);
+  }, [resolved, size]);
   useEffect(() => {
     localStorage.setItem("themePreference", theme);
   }, [theme]);
@@ -1015,6 +1016,7 @@ export default function App() {
                   <option value="system">System</option>
                   <option value="light">Light</option>
                   <option value="dark">Dark</option>
+                  <option value="stillwater">Stillwater</option>
                 </select>
               </label>
               <div className="font-controls" role="group" aria-label="Document font size">
@@ -1279,7 +1281,7 @@ export default function App() {
                       path={doc.path}
                       text={doc.text}
                       original={comparison.disk.text}
-                      dark={dark}
+                      theme={resolved}
                       fontSize={size}
                       readOnly={comparison.kind === "review"}
                       history={history}
@@ -1312,7 +1314,7 @@ export default function App() {
                     key={doc.path}
                     path={doc.path}
                     text={doc.text}
-                    dark={dark}
+                    theme={resolved}
                     fontSize={size}
                     history={history}
                     onChange={(text) => documents.edit(doc.path, text)}
@@ -1330,7 +1332,7 @@ export default function App() {
                       key={doc.path}
                       path={doc.path}
                       text={doc.text}
-                      dark={dark}
+                      theme={resolved}
                       fontSize={size}
                       history={history}
                       onChange={(text) => documents.edit(doc.path, text)}
@@ -1347,7 +1349,7 @@ export default function App() {
                     format="mdx"
                     jump={jump?.path === doc.path ? jump : undefined}
                     onJumpMissed={jumpMissed}
-                    dark={dark}
+                    theme={resolved}
                     fontSize={size}
                     refresh={refresh + previewRefresh}
                     onDismiss={dismissFeedback}
@@ -1391,7 +1393,7 @@ export default function App() {
                   format="html"
                   jump={jump?.path === doc.path ? jump : undefined}
                   onJumpMissed={jumpMissed}
-                  dark={dark}
+                  theme={resolved}
                   fontSize={size}
                   refresh={refresh + previewRefresh}
                   onDismiss={dismissFeedback}
