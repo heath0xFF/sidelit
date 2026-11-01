@@ -58,6 +58,50 @@ describe('changes', () => {
     expect(next).toBe('One.\n\nTwo.\n\nTres.\n');
     expect(computeChanges(before, next, 'markdown').changes).toHaveLength(1);
   });
+  it.each([
+    ['bullets', '- a\n- b\n', '* a\n* b\n'],
+    ['emphasis', 'Some _word_ and __bold__.\n', 'Some *word* and **bold**.\n'],
+    ['headings', 'Title\n=====\n', '# Title\n'],
+    ['rules', '***\n', '---\n'],
+    ['tight and loose lists', '- a\n- b\n', '- a\n\n- b\n'],
+    ['escapes', 'a\\_b\n', 'a_b\n'],
+    ['table padding', '| a | b |\n|---|---|\n| 1 | 2 |\n', '|a|b|\n|-|-|\n|1|2|\n'],
+    ['fences', '~~~js\nx\n~~~\n', '```js\nx\n```\n'],
+    ['reference links', 'See [x][d].\n\n[d]: https://a.b\n', 'See [x](https://a.b).\n'],
+    ['reference images', '![x][d]\n\n[d]: a.png\n', '![x](a.png)\n'],
+  ])('does not count a rewrite that reads the same: %s', (_name, before, after) => {
+    expect(computeChanges(before, after, 'markdown').changes).toEqual([]);
+  });
+  it.each([
+    ['text', 'One two.\n', 'One three.\n'],
+    ['list type', '- a\n', '1. a\n'],
+    ['heading level', '# T\n', '## T\n'],
+    ['code', '```js\nx\n```\n', '```js\ny\n```\n'],
+    ['code language', '```js\nx\n```\n', '```ts\nx\n```\n'],
+    ['link target', 'See [x](https://a.b).\n', 'See [x](https://a.c).\n'],
+    ['task state', '- [ ] a\n', '- [x] a\n'],
+    ['reference target', 'See [x][d].\n\n[d]: https://a.b\n', 'See [x][d].\n\n[d]: https://a.c\n'],
+    ['HTML', '<div>a</div>\n', '<div>b</div>\n'],
+  ])('still counts a real change: %s', (_name, before, after) => {
+    expect(computeChanges(before, after, 'markdown').changes.length).toBeGreaterThan(0);
+  });
+  it('shows a changed reference target on the passage that links to it', () => {
+    const { changes } = computeChanges('See [x][d].\n\nMore.\n\n[d]: https://a.b\n', 'See [x][d].\n\nMore.\n\n[d]: https://a.c\n', 'markdown');
+    expect(changes).toMatchObject([{ kind: 'changed', oldText: 'See [x][d].', richFrom: 0, richTo: 1 }]);
+  });
+  it('reverting a passage brings back a definition its links lost', () => {
+    const before = 'See [x][d] now.\n\nMore.\n\n[d]: https://a.b\n', after = 'See [y](https://a.b) now.\n\nMore.\n';
+    const [change] = computeChanges(before, after, 'markdown').changes;
+    const next = revertChange(after, change);
+    expect(next).toBe('See [x][d] now.\n\n[d]: https://a.b\n\nMore.\n');
+    expect(computeChanges(before, next, 'markdown').changes).toEqual([]);
+  });
+  it('treats a very large document by lines rather than parsing it on each key', () => {
+    const before = 'line\n'.repeat(500_000), after = before + 'more\n';
+    const { changes, richCount } = computeChanges(before, after, 'markdown');
+    expect(richCount).toBe(0);
+    expect(changes).toHaveLength(1);
+  });
   it('stays one change instead of doing unbounded work on a huge difference', () => {
     const before = Array.from({ length: 3000 }, (_, i) => 'old ' + i).join('\n');
     const after = Array.from({ length: 3000 }, (_, i) => 'new ' + i).join('\n');
@@ -67,5 +111,9 @@ describe('changes', () => {
     expect(draftChanges('a\nb\nc\n', 'a\nB\nc\nd\n')?.text).toBe('@@ line 2 @@\n- b\n+ B\n@@ line 4 @@\n+ d');
     expect(draftChanges('same', 'same')).toBeUndefined();
     expect(draftChanges('a\n', 'é\n')?.bytes).toBeGreaterThan('@@ line 1 @@\n- a\n+ é'.length);
+  });
+  it('leaves rewritten syntax out of an attached draft, unless that is the only difference', () => {
+    expect(draftChanges('- a\n- b\n\nOld.\n', '* a\n* b\n\nNew.\n', 'markdown')?.text).toBe('@@ line 4 @@\n- Old.\n+ New.');
+    expect(draftChanges('- a\n', '* a\n', 'markdown')?.text).toBe('@@ line 1 @@\n- - a\n+ * a');
   });
 });

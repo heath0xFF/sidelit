@@ -15,6 +15,8 @@ import threading
 import time
 import urllib.request
 
+from focus_guard import FocusGuard
+
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / 'test-results'
 OUT.mkdir(exist_ok=True)
@@ -107,6 +109,7 @@ with tempfile.TemporaryDirectory(prefix='sidelit-update-') as temporary, (OUT / 
         draft.write_text('Original draft file.\n')
         launcher = temporary / 'sidelit'
         launcher.symlink_to(BINARY)
+        guard = FocusGuard(BINARY)
         subprocess.run([str(launcher), str(initial)], check=True, timeout=20)
         wait(lambda: request('/status')['ready'], 'WebDriver')
         time.sleep(.5)
@@ -186,7 +189,8 @@ with tempfile.TemporaryDirectory(prefix='sidelit-update-') as temporary, (OUT / 
         check_update(VERSION)
         # A current version must not be offered for installation again.
         wait(lambda: 'Sidelit is up to date.' in text(), 'current version check')
-        result = {'version': VERSION, 'checks': ['missing feed error', 'cancel preserves draft', 'signed-version mismatch rejected', 'corrupt archive rejected', 'failed install retains discarded draft', 'save before install', 'real bundle replacement', 'symlink CLI launch', 'restart without deleted CLI path', 'no same-version update']}
+        focus = guard.check()
+        result = {**focus, 'version': VERSION, 'checks': ['missing feed error', 'cancel preserves draft', 'signed-version mismatch rejected', 'corrupt archive rejected', 'failed install retains discarded draft', 'save before install', 'real bundle replacement', 'symlink CLI launch', 'restart without deleted CLI path', 'no same-version update']}
         (OUT / 'updater.json').write_text(json.dumps(result, indent=2))
         print(json.dumps(result, indent=2))
     except Exception:

@@ -82,7 +82,9 @@ cargo test --manifest-path src-tauri/Cargo.toml
 pnpm tauri build
 ```
 
-For packaged WKWebView automation, use an isolated test bundle. The test deliberately kills and restarts its app to check recovery. Do not use that test window for real work.
+For packaged WKWebView automation, use an isolated test bundle. The test deliberately kills and restarts its app to check recovery.
+
+A `desktop-test` bundle runs in the background: it never activates, its window is transparent and clicks pass through it, it has no Dock icon, and AeroSpace does not tile it, so you can keep working during a run. `scripts/focus_guard.py` fails a run if the app was ever frontmost or left a visible window. Set `SIDELIT_TEST_VISIBLE=1` to watch a test in a normal window; that window does take focus, and the guard is off. Background runs force key-window status, so they do not exercise real activation, the Dock, the menu bar, or native dialogs.
 
 ```sh
 pnpm tauri build --features desktop-test --config '{"identifier":"app.sidelit.feature-check","productName":"Sidelit Feature Check"}'
@@ -96,7 +98,7 @@ The optional `tauri-plugin-wdio-webdriver` is current Tauri-supported desktop to
 
 The review smoke test uses a private test-only Unix-socket receiver, not a real agent. It checks multi-file notes, private storage, a dropped receipt, restart without automatic sending, identical retry, removal, minimum-window controls, and unchanged documents. It deletes only its isolated app's saved review notes.
 
-Under AeroSpace, run the companion smoke test with `SIDELIT_TEST_FLOAT=1`; a tiled test window makes it fail intermittently. The companion smoke test additionally requires an installed Pi. It starts an isolated Pi runtime with a deterministic offline model extension, invokes Pi's real edit tool against temporary files, and checks native delivery, acceptance, refresh, MDX, assets, and sandbox boundaries. It does not use your model accounts or change your Pi configuration. Run it from a separate Rex test pane to verify inherited Rex identifiers. Unit tests cover disconnected/busy sockets, duplicate delivery, malformed messages, project matching, and compilation errors.
+The companion smoke test additionally requires an installed Pi. It starts an isolated Pi runtime with a deterministic offline model extension, invokes Pi's real edit tool against temporary files, and checks native delivery, acceptance, refresh, MDX, assets, and sandbox boundaries. It does not use your model accounts or change your Pi configuration. Run it from a separate Rex test pane to verify inherited Rex identifiers. Unit tests cover disconnected/busy sockets, duplicate delivery, malformed messages, project matching, and compilation errors.
 
 `python3 scripts/updater-smoke.py` builds two isolated app versions with a disposable signing key and local feed. It checks corrupt archives, version substitution, cancelled/failed installs, real bundle replacement, and restart after the original CLI file was deleted. It does not touch your ordinary Sidelit bundle. Public update artifacts use a separate release key and HTTPS; see `RELEASING.md`.
 

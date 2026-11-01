@@ -1,4 +1,5 @@
 mod agents;
+mod baselines;
 mod cli;
 mod files;
 mod git;
@@ -7,9 +8,12 @@ mod integrations;
 mod menu;
 mod preview;
 mod recovery;
+mod requests;
 mod review;
 mod search;
 mod service;
+#[cfg(feature = "desktop-test")]
+mod test_window;
 mod updates;
 
 use std::{
@@ -54,7 +58,7 @@ fn acknowledge(path: Option<&Path>, result: Result<(), String>) {
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
     if args == ["--help"] || args == ["-h"] {
-        println!("Sidelit — a visual companion for terminal development.\n\nUsage: sidelit [--source] [--find TEXT] [PATH]\n       sidelit setup [--pi] [--skill] [--dry-run] [--json]\n       sidelit doctor [--project DIR] [--json]\n       sidelit sessions [--project DIR] [--json]\n       sidelit --help\n       sidelit --version\n\nPATH is a Markdown, MDX, or HTML file, or a folder, relative to your current directory.\nRequests reuse the running app. The command returns after handoff.\nSetup installs bundled integrations without a checkout. Existing custom installations are preserved.\nDoctor is read-only; it never sends an agent instruction. JSON schema version: 1.\nExit codes: 0 success, 1 setup conflict or no healthy matching Pi (doctor), 2 invalid request/error.\nUse -- before a path named setup, doctor, or sessions.");
+        println!("Sidelit — a visual companion for terminal development.\n\nUsage: sidelit [--source] [--then] [--find TEXT [--note TEXT]]... [PATH]\n       sidelit setup [--pi] [--skill] [--dry-run] [--json]\n       sidelit doctor [--project DIR] [--json]\n       sidelit sessions [--project DIR] [--json]\n       sidelit --help\n       sidelit --version\n\nPATH is a Markdown, MDX, or HTML file, or a folder, relative to your current directory.\nRequests reuse the running app. The command returns after handoff.\nSetup installs bundled integrations without a checkout. Existing custom installations are preserved.\nDoctor is read-only; it never sends an agent instruction. JSON schema version: 1.\nExit codes: 0 success, 1 setup conflict or no healthy matching Pi (doctor), 2 invalid request/error.\nUse -- before a path named setup, doctor, or sessions.");
         return;
     }
     if args == ["--version"] {
@@ -136,6 +140,8 @@ fn main() {
         .manage(service::Service::default())
         .manage(recovery::Recovery::default())
         .manage(review::Review::default())
+        .manage(baselines::Baselines::default())
+        .manage(requests::Requests::default())
         .manage(preview::Previews::default())
         .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
             let (args, ack) = split_ack(args.into_iter().skip(1).collect());
@@ -143,11 +149,7 @@ fn main() {
                 if let Some(r) = r {
                     service::enqueue(app, r);
                 }
-                if let Some(w) = app.get_webview_window("main") {
-                    let _ = w.show();
-                    let _ = w.unminimize();
-                    let _ = w.set_focus();
-                }
+                service::bring_forward(app);
             });
             acknowledge(ack.as_deref(), result);
         }))
@@ -160,6 +162,10 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             git::git_status,
             git::git_committed,
+            baselines::load_baseline,
+            baselines::store_baseline,
+            requests::request_changes,
+            requests::request_baseline,
             service::ready,
             service::choose,
             service::open_document,
@@ -195,7 +201,16 @@ fn main() {
             if let Ok(instance) = integrations::register_instance() {
                 app.manage(instance);
             }
-            tauri::WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?
+            let window =
+                tauri::WebviewWindowBuilder::from_config(app, &app.config().app.windows[0])?;
+            #[cfg(feature = "desktop-test")]
+            let window = if test_window::background() {
+                // Shown by run_unseen, once it can no longer be seen.
+                window.focused(false).visible(false)
+            } else {
+                window
+            };
+            let window = window
                 .on_navigation(|url| {
                     let local = (url.scheme() == "tauri" && url.host_str() == Some("localhost"))
                         || (url.scheme() == "http" && url.host_str() == Some("tauri.localhost"));
@@ -209,6 +224,12 @@ fn main() {
                 })
                 .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
                 .build()?;
+            #[cfg(feature = "desktop-test")]
+            if test_window::background() {
+                test_window::run_unseen(&window);
+            }
+            #[cfg(not(feature = "desktop-test"))]
+            let _ = window;
             menu::install(app.handle())?;
             if let Some(request) = request {
                 service::enqueue(app.handle(), request);
@@ -218,9 +239,16 @@ fn main() {
         });
     #[cfg(feature = "desktop-test")]
     let builder = builder.plugin(tauri_plugin_wdio_webdriver::init());
-    let app = builder
+    #[cfg(feature = "desktop-test")]
+    let builder = builder.activate_ignoring_other_apps(!test_window::background());
+    #[allow(unused_mut)]
+    let mut app = builder
         .build(tauri::generate_context!())
         .expect("build Sidelit");
+    #[cfg(all(feature = "desktop-test", target_os = "macos"))]
+    if test_window::background() {
+        app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+    }
     app.run(|app, event| match event {
         // Ready runs after Tauri installs its development icon.
         tauri::RunEvent::Ready

@@ -15,11 +15,14 @@ import time
 import urllib.request
 import uuid
 
+from focus_guard import FocusGuard
+
 ROOT = Path(__file__).resolve().parent.parent
 BINARY = Path(os.environ['SIDELIT_TEST_BINARY'])
 with (BINARY.parents[1] / 'Info.plist').open('rb') as file:
     identifier = plistlib.load(file)['CFBundleIdentifier']
 assert identifier != 'app.sidelit.desktop', 'Use an isolated desktop-test bundle.'
+guard = FocusGuard(BINARY)
 with socket.socket() as probe:
     assert probe.connect_ex(('127.0.0.1', 4445)) != 0, 'Another test app owns WebDriver'
 OUT = ROOT / 'test-results/review'
@@ -139,11 +142,6 @@ with tempfile.TemporaryDirectory(prefix='sidelit-review-') as tmp:
             (OUT / name).write_bytes(base64.b64decode(request(f'/session/{session}/screenshot')))
 
         def size(width, height):
-            if shutil.which('aerospace'):
-                windows = subprocess.check_output(['aerospace', 'list-windows', '--all', '--format', '%{window-id} %{app-bundle-id}'], text=True)
-                for line in windows.splitlines():
-                    if line.endswith(' ' + identifier):
-                        subprocess.run(['aerospace', 'layout', '--window-id', line.split()[0], 'floating'], check=True)
             request(f'/session/{session}/window/rect', {'width': width, 'height': height})
             time.sleep(.2)
 
@@ -286,7 +284,8 @@ with tempfile.TemporaryDirectory(prefix='sidelit-review-') as tmp:
         wait(lambda: not state_path.exists(), 'test notes removed')
         assert len(deliveries) == 2, 'Exit actions must never send feedback'
         assert all(path.read_bytes() == data and path.stat().st_mtime_ns == stamp for path, (data, stamp) in originals.items())
-        print(json.dumps({'notes': 2, 'deliveryAttempts': 2, 'uniqueBatches': 1, 'restartDidNotSend': True, 'privateStorageDeleted': True, 'documentBytesUnchanged': True, 'quitDraftProtection': 'cancel, Escape, save failure, save/restart, discard, saved-note edits, unchanged notes', 'updateDraftProtection': 'cancel and failed install (test API)'}, indent=2))
+        focus = guard.check()
+        print(json.dumps({**focus, 'notes': 2, 'deliveryAttempts': 2, 'uniqueBatches': 1, 'restartDidNotSend': True, 'privateStorageDeleted': True, 'documentBytesUnchanged': True, 'quitDraftProtection': 'cancel, Escape, save failure, save/restart, discard, saved-note edits, unchanged notes', 'updateDraftProtection': 'cancel and failed install (test API)'}, indent=2))
     finally:
         stop(); stopped.set(); thread.join(timeout=2); server.close()
         registration.unlink(missing_ok=True); socket_path.unlink(missing_ok=True)

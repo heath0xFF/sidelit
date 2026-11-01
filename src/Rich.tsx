@@ -15,7 +15,8 @@ import { elementContext, textContext, type SelectionContext } from "./inspection
 import { findText, locateSelection, markSelection, markTarget } from './selection-dom';
 import { blocksFit, type ChangeSet } from "./changes";
 import { claimJump, type Jump } from "./jump";
-import { displayMath, findInlineMath, MAX_MATH_PER_DOCUMENT, MAX_MATH_SOURCE } from "./math";
+import { displayMath, findInlineMath, mathSources, MAX_MATH_PER_DOCUMENT, MAX_MATH_SOURCE } from "./math";
+import { findInDocument } from "./find";
 import "@milkdown/crepe/theme/common/style.css";
 import "@milkdown/crepe/theme/frame.css";
 
@@ -74,6 +75,8 @@ export default function Rich({
   jump,
   onJumpMissed,
   onChangesUnmapped,
+  search,
+  onSearchCount,
 }: {
   path: string;
   text: string;
@@ -92,6 +95,8 @@ export default function Rich({
   jump?: Jump;
   onJumpMissed?: (jump: Jump) => void;
   onChangesUnmapped?: (unmapped: boolean) => void;
+  search?: { query: string; index: number; nonce: number };
+  onSearchCount?: (count: number) => void;
 }) {
   const root = useRef<HTMLDivElement>(null);
   const [ready, setReady] = useState(false);
@@ -99,7 +104,9 @@ export default function Rich({
   const lastReveal = useRef(0);
   const highlight = useRef<(() => void) | undefined>(undefined);
   const instance = useRef<Crepe | null>(null);
-  const marks = useRef({ changes, active: changeNav?.index ?? 0, version: 0 });
+  const marks = useRef({ changes, active: changeNav?.index ?? 0, version: 0, search });
+  const searched = useRef(onSearchCount);
+  searched.current = onSearchCount;
   const unmapped = useRef(onChangesUnmapped);
   unmapped.current = onChangesUnmapped;
   const redraw = () => {
@@ -220,12 +227,16 @@ export default function Rich({
             props: {
               // Crepe changes view props; a decoration update also refreshes nested CodeMirror read-only state.
               decorations(state) {
-                const editing = canEdit.current, { version, changes, active } = marks.current;
+                const editing = canEdit.current, { version, changes, active, search } = marks.current;
                 if (drawn?.doc === state.doc && drawn.version === version && drawn.editing === editing) return drawn.set;
                 const items: Decoration[] = [];
                 let drawnMath = 0;
+                const hidden: [number, number][] = [];
+                let sources: ReturnType<typeof mathSources> | undefined;
+                const inMarkdown = (text: string) => (sources ??= mathSources(frontmatter(current.current).body))(text);
                 const math = (from: number, to: number, source: string, display: boolean, at: number) => {
                   if (source.length > MAX_MATH_SOURCE || ++drawnMath > MAX_MATH_PER_DOCUMENT) return;
+                  hidden.push([from, to]);
                   items.push(Decoration.inline(from, to, { class: 'math-source' }));
                   items.push(Decoration.widget(at, () => mathWidget(source, display), { key: `math:${display}:${source}`, side: -1, ignoreSelection: true }));
                 };
@@ -239,13 +250,14 @@ export default function Rich({
                   if (node.type.name === 'paragraph' && node.childCount) {
                     let plain = true;
                     node.forEach(child => { if (child.marks.length || !(child.isText || child.type.name === 'hardbreak')) plain = false; });
-                    const source = plain ? displayMath(node.textBetween(0, node.content.size, '\n', '\n')) : undefined;
+                    const shown = plain ? displayMath(node.textBetween(0, node.content.size, '\n', '\n')) : undefined;
+                    const source = shown && inMarkdown(shown);
                     if (source) { math(pos + 1, pos + node.nodeSize - 1, source, true, pos + 1); return false; }
                   }
                   if (node.isText && parent?.type.name !== 'code_block' && !node.marks.some(mark => mark.type.name === 'inlineCode')) {
                     for (const match of findInlineMath(node.text!)) {
-                      // Markdown removes the backslash from an escaped dollar; the source still has it.
-                      if (!current.current.includes('\\$' + match.source)) math(pos + match.from, pos + match.to, match.source, false, pos + match.from);
+                      const source = inMarkdown(match.source);
+                      if (source) math(pos + match.from, pos + match.to, source, false, pos + match.from);
                     }
                   }
                 });
@@ -282,6 +294,17 @@ export default function Rich({
                         }
                       }
                     });
+                  }
+                }
+                if (search?.query.trim()) {
+                  const found = findInDocument(state.doc, search.query, hidden);
+                  queueMicrotask(() => searched.current?.(found.length));
+                  const focused = found[Math.min(search.index, found.length - 1)];
+                  const blocks = new Set<number>();
+                  for (const match of found) {
+                    if (!match.code) items.push(Decoration.inline(match.from, match.to, { class: 'sidelit-find' + (match === focused ? ' active' : '') }));
+                    else if (match === focused) items.push(Decoration.node(match.code.from, match.code.to, { class: 'sidelit-find-block active', 'data-sidelit-find-nth': String(match.code.nth) }));
+                    else if (!blocks.has(match.code.from) && match.code.from !== focused?.code?.from) { blocks.add(match.code.from); items.push(Decoration.node(match.code.from, match.code.to, { class: 'sidelit-find-block' })); }
                   }
                 }
                 const set = DecorationSet.create(state.doc, items);
@@ -419,6 +442,24 @@ export default function Rich({
     if (!changes) unmapped.current?.(false);
     if (ready) redraw();
   }, [changes, changeNav?.index, ready]);
+  useEffect(() => {
+    marks.current.search = search;
+    if (!ready) return;
+    redraw();
+    if (!search?.query.trim()) { searched.current?.(0); return; }
+    let clear: (() => void) | undefined, timer: ReturnType<typeof setTimeout> | undefined;
+    const frame = requestAnimationFrame(() => {
+      const target = root.current?.querySelector<HTMLElement>('.sidelit-find.active, .sidelit-find-block.active');
+      target?.scrollIntoView({ block: 'center' });
+      if (target?.dataset.sidelitFindNth === undefined) return;
+      // Decorations cannot reach inside a code block, and it may only now be mounting.
+      timer = setTimeout(() => {
+        const words = findText(target, search.query, Number(target.dataset.sidelitFindNth));
+        if (words) { clear = markTarget(root.current!, words, false); }
+      }, 150);
+    });
+    return () => { cancelAnimationFrame(frame); clearTimeout(timer); clear?.(); };
+  }, [ready, search?.query, search?.index, search?.nonce]);
   return (
     <div
       className={'rich-editor' + (!editable ? ' reading' : '')}

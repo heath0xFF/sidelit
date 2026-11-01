@@ -39,7 +39,7 @@ export function locateSelection(root: Element, context: SelectionContext): Range
 }
 
 // An agent's pointer, not captured identity: the first match is the useful answer here.
-export function findText(root: Element, query: string): Range | null {
+export function findText(root: Element, query: string, nth = 0): Range | null {
   const needle = query.trim();
   if (!needle) return null;
   const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT);
@@ -48,8 +48,12 @@ export function findText(root: Element, query: string): Range | null {
     if (node.parentElement?.closest('[data-sidelit-overlay]')) continue;
     nodes.push(node as Text); text += node.textContent;
   }
-  let start = text.indexOf(needle);
-  if (start < 0) start = text.toLowerCase().indexOf(needle.toLowerCase());
+  let start = nth ? -1 : text.indexOf(needle);
+  if (start < 0) {
+    const lower = text.toLowerCase(), wanted = needle.toLowerCase();
+    start = lower.indexOf(wanted);
+    for (let i = 0; i < nth && start >= 0; i++) start = lower.indexOf(wanted, start + wanted.length);
+  }
   if (start < 0) return null;
   const range = root.ownerDocument.createRange(); let offset = 0, started = false;
   for (const item of nodes) {

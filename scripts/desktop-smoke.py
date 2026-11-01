@@ -13,6 +13,8 @@ import tempfile
 import time
 import urllib.request
 
+from focus_guard import FocusGuard
+
 ROOT = Path(__file__).resolve().parent.parent
 BINARY = Path(os.environ.get('SIDELIT_TEST_BINARY', ROOT / 'src-tauri/target/release/bundle/macos/Sidelit.app/Contents/MacOS/sidelit'))
 with (BINARY.parents[1] / 'Info.plist').open('rb') as info:
@@ -62,11 +64,14 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     diagrams.write_bytes(diagrams.read_bytes().replace(b'\n', b'\r\n'))
     before = file.read_bytes()
     modified = file.stat().st_mtime_ns
+    guard = FocusGuard(BINARY)
     started = time.monotonic()
     timing = launch()
     wait(lambda: request('/status')['ready'], 'WebDriver')
     time.sleep(.5)
     session = request('/session', {'capabilities': {}})['sessionId']
+    # A script sent during navigation is lost; fail fast and retry instead of waiting 30 seconds.
+    request(f'/session/{session}/timeouts', {'script': 5000})
 
     def js(script, *args):
         return request(f'/session/{session}/execute/sync', {'script': script, 'args': list(args)})
@@ -113,12 +118,6 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     launch(file)
     wait(lambda: js('return document.querySelector(".ProseMirror h1")?.textContent') == 'Original', 'rendered editor')
     ready_seconds = round(time.monotonic() - started, 3)
-    # A tiling window manager can otherwise undo the test viewport sizes.
-    if shutil.which('aerospace'):
-        windows = subprocess.check_output(['aerospace', 'list-windows', '--all', '--format', '%{window-id} %{app-bundle-id}'], text=True)
-        for line in windows.splitlines():
-            if line.endswith(' ' + identifier):
-                subprocess.run(['aerospace', 'layout', '--window-id', line.split()[0], 'floating'], check=True)
     def instrument():
         js('window.__errors=[];window.__workers=[]; addEventListener("error",e=>__errors.push(e.message)); addEventListener("unhandledrejection",e=>__errors.push(String(e.reason?.stack||e.reason)));addEventListener("securitypolicyviolation",e=>__errors.push("CSP: "+e.violatedDirective+" "+e.blockedURI)); const W=window.Worker;window.Worker=class extends W{constructor(...a){super(...a);__workers.push(String(a[0]));this.addEventListener("error",e=>__errors.push("worker: "+e.message));}}')
     instrument()
@@ -575,13 +574,44 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
         wait(lambda: not js('return !!document.querySelector(".changes-bar,.sidelit-change,.sidelit-removed")'), 'marking reviewed clears the marks')
         assert not dirty_tab() and reviewed.read_bytes() == after_agent
 
+        # Marks outlast a closed tab. The restart at the end of this test checks they outlast a crash too.
+        pending = folder / 'Pending.md'
+        pending.write_bytes(b'Kept.\n\nOld line.\n')
+        launch(pending)
+        wait(lambda: 'Old line.' in rich_text(), 'document to leave unreviewed')
+        pending.write_bytes(b'Kept.\n\nNew line.\n')
+        wait(lambda: '1 change' in body() and js('return document.querySelectorAll(".sidelit-change").length') == 1, 'unreviewed change marked')
+        time.sleep(.3)
+        js('document.querySelector(".tab.active .tab-close").click()')
+        wait(lambda: not js('return [...document.querySelectorAll(".tab")].some(t=>t.textContent.startsWith("Pending.md"))'), 'tab closed with its changes unreviewed')
+        launch(pending)
+        wait(lambda: 'New line.' in rich_text() and '1 change' in body() and js('return document.querySelectorAll(".sidelit-change").length') == 1, 'marks return when the document reopens')
+        assert not dirty_tab() and pending.read_bytes() == b'Kept.\n\nNew line.\n', 'restoring marks must not touch the document'
+        js('document.querySelector(".tab.active .tab-close").click()')
+        wait(lambda: not js('return [...document.querySelectorAll(".tab")].some(t=>t.textContent.startsWith("Pending.md"))'), 'tab closed again')
+
+        # A rewrite that reads the same is not a change to review.
+        spelling = folder / 'Spelling.md'
+        spelling.write_bytes(b'- one\n- two\n\nSome _word_.\n')
+        launch(spelling)
+        wait(lambda: 'Some word.' in rich_text(), 'document to respell')
+        spelling.write_bytes(b'* one\n* two\n\nSome *word*.\n')
+        wait(lambda: 'Updated from disk' in body(), 'respelled document reloaded')
+        time.sleep(.3)
+        assert not js('return !!document.querySelector(".changes-bar,.sidelit-change")'), 'rewritten syntax must not be marked'
+        spelling.write_bytes(b'* one\n* two\n\nSome *other*.\n')
+        wait(lambda: '1 change' in body(), 'a real change after a rewrite is still marked')
+        click('Mark reviewed')
+
         # Math is drawn while reading, without touching the bytes, and money stays money.
         math_doc = folder / 'Math.md'
-        math_bytes = b'Energy $E=mc^2$ here.\n\nPrice $5 only, and $HOME too.\n\n$$\n\\frac{a}{b}\n$$\n\n`$code$` stays.\n'
+        math_bytes = b'Energy $E=mc^2$ here.\n\nPrice $5 only, and $HOME too.\n\n$$\n\\frac{a}{b}\n$$\n\n`$code$` stays.\n\nSet $\\{a\\}$ here.\n\nEscaped \\$y\\$ stays.\n'
         math_doc.write_bytes(math_bytes)
         math_stamp = math_doc.stat().st_mtime_ns
         launch(math_doc)
-        wait(lambda: js('return document.querySelectorAll(".ProseMirror .katex").length') == 2, 'inline and display math drawn')
+        wait(lambda: js('return document.querySelectorAll(".ProseMirror .katex").length') == 3, 'inline and display math drawn')
+        assert '{a}' in js('return [...document.querySelectorAll(".ProseMirror .katex")].map(a=>a.textContent).join("|")'), 'math must draw from its Markdown source: without its backslashes, KaTeX reads {a} as a group and draws no braces'
+        assert 'Escaped $y$ stays.' in body(), 'escaped dollars stay text'
         assert js('return document.querySelectorAll(".math-display").length') == 1
         assert js('return getComputedStyle(document.querySelector(".math-source")).display') == 'none'
         assert 'Price $5 only, and $HOME too.' in body() and '$code$' in body() and 'E=mc^2$' not in body()
@@ -593,7 +623,7 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
         edit_rendered()
         wait(lambda: js('return !document.querySelector(".ProseMirror .katex")') and '$E=mc^2$' in body(), 'math shows as source while editing')
         click('Done editing')
-        wait(lambda: js('return document.querySelectorAll(".ProseMirror .katex").length') == 2, 'math drawn again after editing')
+        wait(lambda: js('return document.querySelectorAll(".ProseMirror .katex").length') == 3, 'math drawn again after editing')
         assert not dirty_tab() and math_doc.read_bytes() == math_bytes
 
         # Outline, same-file anchors, links with anchors between documents, and pointers from the CLI.
@@ -639,6 +669,74 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
         assert 'Could not find' not in body()
         screenshot('find-html.png')
         click('Files')
+
+        # An agent can walk through several passages, with a note at each, across documents.
+        launch('--find', 'Filler paragraph 40', '--note', 'Start here, because this is where it goes wrong.', '--find', 'The far passage', '--note', 'Then this.', linked)
+        walk_text = lambda: js('return document.querySelector(".walk-bar")?.innerText||""')
+        active_tab = lambda: js('return document.querySelector(".tab.active")?.textContent')
+        wait(lambda: 'Stop 1 of 2' in walk_text() and 'Start here' in walk_text() and active_tab().startswith('Linked.md') and js('return document.querySelectorAll(".selection-highlight i").length') > 0, 'walkthrough opens at its first stop')
+        screenshot('walk.png')
+        click('Next')
+        wait(lambda: 'Stop 2 of 2' in walk_text() and 'Then this.' in walk_text() and visible('.ProseMirror h2'), 'walkthrough moves to its next stop')
+        launch('--then', '--find', 'The other passage', '--note', 'Last, the other document.', other)
+        wait(lambda: 'Stop 2 of 3' in walk_text(), 'adding a stop leaves the person where they are')
+        assert active_tab().startswith('Linked.md')
+        js('window.dispatchEvent(new KeyboardEvent("keydown",{key:"F9",bubbles:true}))')
+        wait(lambda: 'Stop 3 of 3' in walk_text() and active_tab().startswith('Other.md'), 'F9 moves to a stop in another document')
+        js('window.dispatchEvent(new KeyboardEvent("keydown",{key:"F9",shiftKey:true,bubbles:true}))')
+        wait(lambda: 'Stop 2 of 3' in walk_text() and active_tab().startswith('Linked.md'), 'Shift+F9 steps back')
+        request(f'/session/{session}/window/rect', {'width': 720, 'height': 630})
+        time.sleep(.3)
+        assert js('return document.documentElement.scrollWidth <= innerWidth'), 'the walkthrough bar must not overflow a narrow window'
+        screenshot('walk-narrow.png')
+        request(f'/session/{session}/window/rect', {'width': 1180, 'height': 820})
+        click('Done')
+        wait(lambda: not walk_text(), 'walkthrough dismissed')
+        assert not dirty_tab()
+
+        # Find in the rich editor marks text and code blocks, and never touches the draft.
+        searchable = folder / 'Searchable.md'
+        search_bytes = b'First needle here.\n\n' + filler + b'Second **nee**dle, split.\n\n```js\nconst needle = "needle"\n```\n\nA $needle$ in math.\n\nNo match here.\n'
+        searchable.write_bytes(search_bytes)
+        launch(searchable)
+        wait(lambda: 'First needle' in rich_text(), 'document to search')
+        press = lambda key, **more: js('window.dispatchEvent(new KeyboardEvent("keydown",Object.assign({key:arguments[0],metaKey:true,bubbles:true},arguments[1])))', key, more)
+        def search_for(text):
+            js('const el=document.querySelector(".find-bar input");Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(el,arguments[0]);el.dispatchEvent(new Event("input",{bubbles:true}))', text)
+        count = lambda: js('return document.querySelector(".find-count")?.textContent')
+        press('f')
+        wait(lambda: js('return document.activeElement===document.querySelector(".find-bar input")'), 'Find opens with its field focused')
+        search_for('NEEDLE')
+        wait(lambda: count() == '1 of 4', 'matches counted, case-insensitively, across marks and in code, not in drawn math')
+        assert js('return document.querySelectorAll(".sidelit-find").length') >= 2 and js('return document.querySelector(".sidelit-find.active").textContent').lower() == 'needle'
+        screenshot('find-bar.png')
+        js('document.querySelector(".find-bar input").dispatchEvent(new KeyboardEvent("keydown",{key:"Enter",bubbles:true}))')
+        wait(lambda: count() == '2 of 4' and visible('.sidelit-find.active'), 'Enter moves to the next match and scrolls to it')
+        press('g')
+        wait(lambda: count() == '3 of 4' and js('return !!document.querySelector(".sidelit-find-block.active")'), 'a match in a code block marks the block')
+        wait(lambda: js('return document.querySelectorAll(".selection-highlight i").length') > 0, 'the words in a code block are marked')
+        screenshot('find-code.png')
+        press('g', shiftKey=True)
+        wait(lambda: count() == '2 of 4' and not js('return !!document.querySelector(".sidelit-find-block.active")'), 'Shift+Cmd+G moves back')
+        search_for('nothing like this')
+        wait(lambda: count() == 'No matches' and not js('return !!document.querySelector(".sidelit-find")'), 'no matches')
+        search_for('needle')
+        wait(lambda: count() == '1 of 4', 'searching again')
+        edit_rendered()
+        time.sleep(.3)
+        assert not dirty_tab(), 'find must not touch the draft while editing'
+        click('Done editing')
+        js('document.querySelector(".find-bar input").dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true}))')
+        wait(lambda: not js('return !!document.querySelector(".find-bar,.sidelit-find,.sidelit-find-block")'), 'Escape closes Find and clears its marks')
+        click('Save')
+        time.sleep(.2)
+        assert not dirty_tab() and searchable.read_bytes() == search_bytes, 'find must not change the file'
+        click('Source')
+        wait(lambda: js('return !!document.querySelector(".monaco-editor")'), 'source for its own Find')
+        press('f')
+        time.sleep(.2)
+        assert not js('return !!document.querySelector(".find-bar")'), 'Source keeps its own Find'
+        click('Rendered')
 
         # Git status marks changed documents, and opening one compares it with the last commit.
         git = ['git', '-c', 'user.name=Test', '-c', 'user.email=test@example.com', '-c', 'commit.gpgsign=false']
@@ -896,6 +994,8 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     wait(lambda: request('/status')['ready'], 'restarted WebDriver')
     time.sleep(.5)
     session = request('/session', {'capabilities': {}})['sessionId']
+    # A script sent during navigation is lost; fail fast and retry instead of waiting 30 seconds.
+    request(f'/session/{session}/timeouts', {'script': 5000})
     wait(lambda: 'Restore your last session?' in body(), 'restart recovery offer', timeout=30)
     instrument()
     screenshot('restore-session.png')
@@ -918,9 +1018,23 @@ with tempfile.TemporaryDirectory(prefix='sidelit-desktop-') as tmp:
     wait(lambda: js('return !!document.querySelector("dialog[open]")'), 'restored draft discard consent')
     click('Discard and Reload')
     wait(lambda: not js('return !!document.querySelector(".tab.active .dirty-dot")'), 'checkpoint test discarded')
+    # Left unreviewed and closed long before the crash above.
+    launch(pending)
+    wait(lambda: '1 change' in body() and js('return document.querySelectorAll(".sidelit-change").length') == 1, 'marks survive a crash and restart')
+    assert pending.read_bytes() == b'Kept.\n\nNew line.\n'
+    click('Mark reviewed')
+    wait(lambda: not js('return !!document.querySelector(".changes-bar")'), 'reviewed after restart')
+    time.sleep(.3)
+    js('document.querySelector(".tab.active .tab-close").click()')
+    wait(lambda: not js('return [...document.querySelectorAll(".tab")].some(t=>t.textContent.startsWith("Pending.md"))'), 'closed once reviewed')
+    launch(pending)
+    wait(lambda: js('return document.querySelector(".tab.active")?.textContent').startswith('Pending.md'), 'reopened once reviewed')
+    time.sleep(.5)
+    assert not js('return !!document.querySelector(".changes-bar")'), 'marking reviewed must delete the saved baseline'
     errors = errors_before_crash + js('return __errors')
     assert errors == [], errors
-    report = {'handoffSeconds': timing, 'editorReadySeconds': ready_seconds, 'warmHandoffSeconds': warm, 'workers': workers_before_crash + js('return __workers'), 'errors': errors, 'checks': 'Change marks, stepping, revert and undo; math with byte preservation; outline, anchors and --find in the rich editor, Source and HTML; Git marks and commit comparison; comments and raw HTML in the rich editor with byte preservation; Mermaid in the rich editor, invalid diagrams, CRLF no-op save, themes and narrow layout; MDX split with live render, last good render and recovery; Source selection actions; Crepe input; Monaco input; 80% rendered column and narrow gutter; keyboard/menu undo and redo in both editors, code blocks, and search inputs; disk reload history reset; undo/redo disk adoption; read-only history guards; CRLF; no-op save; mode/tab switches; clean refresh; conflict/diff; discard/cancel; rename; delete/recreate; repeated CLI; Unicode/caller cwd; local image and alt fidelity; project README preview/mode/no-op save; user guide rich editing; literal code preserved and HTML examples inert; frontmatter; dirty close/quit cancel; save on close; task/numbered/nested/wrapped list alignment at 12–28px; local fonts; One themes; system preference; live sizing without editor remounts; opaque frontmatter rich editing; sticky Source; scoped Quick Open; background close selection; editable diff and keyboard change acceptance; stale merged-save rejection; clean change review; New/Save As UI (native selection simulated); Save As cancel/failure; recovery checkpoint, process crash, restart, conflict-safe restore (native approval simulated), and deletion'}
+    focus = guard.check()
+    report = {**focus, 'handoffSeconds': timing, 'editorReadySeconds': ready_seconds, 'warmHandoffSeconds': warm, 'workers': workers_before_crash + js('return __workers'), 'errors': errors, 'checks': 'Saved marks across close and crash; rewrites not marked; math from source; walkthroughs; Find; Change marks, stepping, revert and undo; math with byte preservation; outline, anchors and --find in the rich editor, Source and HTML; Git marks and commit comparison; comments and raw HTML in the rich editor with byte preservation; Mermaid in the rich editor, invalid diagrams, CRLF no-op save, themes and narrow layout; MDX split with live render, last good render and recovery; Source selection actions; Crepe input; Monaco input; 80% rendered column and narrow gutter; keyboard/menu undo and redo in both editors, code blocks, and search inputs; disk reload history reset; undo/redo disk adoption; read-only history guards; CRLF; no-op save; mode/tab switches; clean refresh; conflict/diff; discard/cancel; rename; delete/recreate; repeated CLI; Unicode/caller cwd; local image and alt fidelity; project README preview/mode/no-op save; user guide rich editing; literal code preserved and HTML examples inert; frontmatter; dirty close/quit cancel; save on close; task/numbered/nested/wrapped list alignment at 12–28px; local fonts; One themes; system preference; live sizing without editor remounts; opaque frontmatter rich editing; sticky Source; scoped Quick Open; background close selection; editable diff and keyboard change acceptance; stale merged-save rejection; clean change review; New/Save As UI (native selection simulated); Save As cancel/failure; recovery checkpoint, process crash, restart, conflict-safe restore (native approval simulated), and deletion'}
     (OUT / 'desktop.json').write_text(json.dumps(report, indent=2))
     print(json.dumps(report, indent=2))
     # Close only the temporary documents; the app remains available for manual checks.

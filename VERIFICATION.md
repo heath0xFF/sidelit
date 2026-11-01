@@ -1,5 +1,47 @@
 # Verification
 
+## Background test runs — unreleased
+
+Packaged test runs used to activate the app and put a window over whatever was in front, which also
+made AeroSpace retile. `desktop-test` builds now run as a background process with a transparent,
+click-through window. `scripts/focus_guard.py` samples the frontmost app every 0.1 s and lists on-screen
+windows at the end of each run.
+
+- Desktop (twice), feedback, review, companion, and updater pass in the background; every guarded run
+  recorded 0 frontmost samples and 0 visible windows. Desktop recorded 296 samples in a 39 s run.
+- `aerospace list-windows --all` did not list the test window during a run.
+- Screenshots still draw with WebKit's occlusion detection off: five captures are 260–370 KB, and the
+  compare view, opened to check, rendered correctly.
+- Companion passed 14 of 14. Its earlier flake came from the suites, not from background mode: a script
+  sent during navigation is lost and held the driver for 30 s, past a 20 s wait. Desktop and companion
+  now set a 5 s script timeout and retry.
+- Not exercised in background mode: real activation, the Dock, the menu bar, native dialogs, or a window
+  really losing focus, because `isKeyWindow` is forced. `SIDELIT_TEST_VISIBLE=1` was not run either.
+
+## Saved marks, request changes, walkthroughs, Find — unreleased
+
+Marks saved across close and restart; rewritten syntax no longer marked; math drawn from its
+Markdown source; documents that changed during a request; `--note` and `--then`; ⌘F in the rich editor.
+
+- `tests/crepe-roundtrip.test.ts` takes real Crepe's rewrite of bullets, emphasis, setext headings,
+  rules, fences, tables, and reference links, and confirms only the edited passage is marked.
+  `tests/changes.test.ts` holds real changes to being marked, including link targets and code language.
+- `scripts/desktop-smoke.py` in packaged WKWebView: marks return after closing a tab and after SIGKILL
+  and restart, and do not return once reviewed; a respelled file shows no bar; `\{a\}` draws braces and
+  `\$y\$` stays text; walkthrough stops, `--then`, F9, narrow width; Find counts across marks and in
+  code, skips drawn math, and leaves the draft and file bytes alone.
+- `scripts/companion-smoke.py` with real Pi: a real edit is listed, opens with only that request
+  marked, compares with the version when it was sent, and **All unreviewed** brings back earlier marks.
+  This suite's long-running flake was the test: it instrumented the page before it loaded, so loading
+  wiped its listener. It also read a frame's address while a late watcher refresh could replace it.
+  With both fixed it passed 8 of 8 runs under AeroSpace.
+- Rust tests cover baseline privacy, misfiled and damaged entries, pruning, added, removed and
+  modified documents, and that a capped scan never calls a file new.
+
+Limits: Sidelit cannot tell who changed a file. A folder too large to scan in two seconds is reported
+as incomplete. F8 and F9 do not reach the app while focus is inside a preview frame; use the buttons.
+A code block's words are marked only once Crepe has mounted it; the block outline always shows.
+
 ## v0.6.0 review loop
 
 Changes marked against the last reviewed version or commit, with per-passage revert; unsaved

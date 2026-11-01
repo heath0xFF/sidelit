@@ -22,6 +22,10 @@ pub struct Matches {
 }
 
 pub fn documents(root: &Path, query: &str) -> Result<Matches> {
+    matching(root, query, 200)
+}
+
+pub fn matching(root: &Path, query: &str, limit: usize) -> Result<Matches> {
     if query.len() > 512 {
         return Err("Search is limited to 512 bytes".into());
     }
@@ -89,7 +93,7 @@ pub fn documents(root: &Path, query: &str) -> Result<Matches> {
                     .to_lowercase();
                 if terms.iter().all(|term| relative.contains(term)) {
                     result.paths.push(path);
-                    if result.paths.len() == 200 {
+                    if result.paths.len() == limit {
                         result.incomplete = true;
                         result.paths.sort();
                         return Ok(result);

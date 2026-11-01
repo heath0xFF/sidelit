@@ -4,15 +4,16 @@ import { selectionSummary, type FeedbackMessage, type SelectionRect } from './in
 
 import { intentInstruction, NOT_STARTED } from './review';
 import { MAX_DRAFT_BYTES } from './changes';
+import RequestChanges from './RequestChanges';
 
-export default function FeedbackComposer({ context, open, targets, targetId, onTarget, onChange, onSend, onClose, onDiscard, loading, targetError, onRefreshTargets, stale, candidate, onReplace, onReveal, anchor, onCollect, savedNote = false, collectionBusy = false, draft, changeCount = 0, onShowChanges, onAck }: {
+export default function FeedbackComposer({ context, open, targets, targetId, onTarget, onChange, onSend, onClose, onDiscard, loading, targetError, onRefreshTargets, stale, candidate, onReplace, onReveal, anchor, onCollect, savedNote = false, collectionBusy = false, draft, onOpenChange, onAck }: {
   context: FeedbackMessage; open: boolean; targets: AgentTarget[]; targetId: string;
   onTarget: (id: string) => void; onChange: (change: Partial<FeedbackMessage>) => void;
   onSend: (target: string, message: FeedbackMessage) => Promise<DeliveryAck>; onClose: () => void; onDiscard: () => void;
   loading: boolean; targetError: string; onRefreshTargets: () => void; stale: boolean;
   candidate: FeedbackMessage | null; onReplace: () => void; onReveal: () => void; anchor?: SelectionRect;
   onCollect?: (includeDraft: boolean) => Promise<void>; savedNote?: boolean; collectionBusy?: boolean;
-  draft?: { text: string; bytes: number }; changeCount?: number; onShowChanges?: () => void; onAck?: (ack: DeliveryAck | undefined) => void;
+  draft?: { text: string; bytes: number }; onOpenChange?: (id: string, path: string) => void; onAck?: (ack: DeliveryAck | undefined) => void;
 }) {
   const [sending, setSending] = useState(false);
   const [collecting, setCollecting] = useState(false);
@@ -124,9 +125,9 @@ export default function FeedbackComposer({ context, open, targets, targetId, onT
       {!savedNote && <button className="primary" disabled={(intent === 'edit' && !context.instruction.trim()) || !target?.connected || sending || collecting || !!ack || (!attempt.current && stale && !acknowledgedStale)} onClick={() => void send()}>{sending ? 'Sending…' : ack ? 'Sent' : attempt.current ? 'Retry delivery' : 'Send to Pi'}</button>}
     </div>
     {ack && <div className="feedback-status" role="status">{ack.status === 'settled'
-      ? `Pi finished its turn, which does not mean the request succeeded. Answers are in Pi.${changeCount ? ` ${changeCount} ${changeCount === 1 ? 'change' : 'changes'} to review in open documents.` : ' No open document changed.'}`
+      ? 'Pi finished its turn, which does not mean the request succeeded. Answers are in Pi.'
       : `${ack.status === 'received' ? (ack.delivery === 'queued' ? 'Queued for Pi’s next turn' : 'Received · awaiting Pi acceptance') : 'Pi is working on the request'}. Answers appear in Pi.`}
-      {ack.status === 'settled' && changeCount > 0 && <button onClick={onShowChanges}>Show changes</button>}
+      {ack.status === 'settled' && <RequestChanges id={context.id} root={context.projectRoot} onOpen={path => onOpenChange?.(context.id, path)} />}
       {target?.blockId && <button onClick={() => void api.focusAgent(target.id).catch(error => setError(String(error)))}>Show in Rex</button>}
     </div>}
     {(error || targetError) && <div className="feedback-status error" role="alert">{error || targetError}</div>}

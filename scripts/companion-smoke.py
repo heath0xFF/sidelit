@@ -13,6 +13,8 @@ import threading
 import time
 import urllib.request
 
+from focus_guard import FocusGuard
+
 ROOT = Path(__file__).resolve().parent.parent
 BINARY = Path(os.environ['SIDELIT_TEST_BINARY'])
 with (BINARY.parents[1] / 'Info.plist').open('rb') as info:
@@ -87,10 +89,13 @@ with tempfile.TemporaryDirectory(prefix='sidelit-companion-') as temp:
             diagnosis = json.loads(subprocess.check_output([str(BINARY), 'doctor', '--project', str(folder), '--json'], text=True))
             assert any(t['id'] == target['id'] and t['health']['status'] == 'ready' for t in diagnosis['sessions']), diagnosis
             assert len(target['socketPath']) < 104 and target.get('blockId') == os.environ.get('REX_BLOCK'), target
+            guard = FocusGuard(BINARY)
             launch(folder)
             launch(file)
             wait(lambda: request('/status')['ready'], 'WebDriver')
             session = request('/session', {'capabilities': {}})['sessionId']
+            # A script sent during navigation is lost; fail fast and retry instead of waiting 30 seconds.
+            request(f'/session/{session}/timeouts', {'script': 5000})
             def js(script, *args):
                 return request(f'/session/{session}/execute/sync', {'script': script, 'args': list(args)})
             def click(text):
@@ -101,10 +106,8 @@ with tempfile.TemporaryDirectory(prefix='sidelit-companion-') as temp:
                 js('const el=document.querySelector(arguments[0]);Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el),"value").set.call(el,arguments[1]);el.dispatchEvent(new Event("input",{bubbles:true}));el.dispatchEvent(new Event("change",{bubbles:true}))', selector, text)
             def capture(name):
                 (OUT / name).write_bytes(base64.b64decode(request(f'/session/{session}/screenshot')))
-            if os.environ.get('SIDELIT_TEST_FLOAT') == '1':
-                windows = json.loads(subprocess.check_output(['aerospace', 'list-windows', '--all', '--json']))
-                test_window = next(w for w in windows if w['app-name'] == BINARY.parents[2].stem)
-                subprocess.run(['aerospace', 'layout', '--window-id', str(test_window['window-id']), 'floating'], check=True)
+            # Instrument the real page: a session can start before it loads, and loading would wipe this.
+            wait(lambda: js('return !!document.querySelector(".app")'), 'app loaded')
             js('window.__previewEvents=[];window.__errors=[];addEventListener("message",e=>__previewEvents.push({data:e.data,origin:e.origin}));addEventListener("error",e=>__errors.push(e.message))')
             wait(lambda: js('return !!document.querySelector(".preview-frame")'), 'HTML frame')
             request(f'/session/{session}/window/rect', {'width': 1180, 'height': 820})
@@ -162,7 +165,9 @@ with tempfile.TemporaryDirectory(prefix='sidelit-companion-') as temp:
             after_agent = wait(lambda: (m if (m := metrics()) and m['text'] == 'Build useful things.' else None), 'agent edit live refresh')
             assert abs(after_agent['anchorTop'] - before_agent['anchorTop']) <= 2, after_agent
             wait(lambda: 'Pi finished its turn' in body(), 'Pi finished after its real edit', 30)
-            assert 'to review in open documents' in body() and js('return document.querySelector(".feedback-button").textContent') == 'Pi finished', body()
+            wait(lambda: 'Changed during this request' in body(), 'the documents that changed during the request are listed')
+            assert js('return document.querySelector(".feedback-button").textContent') == 'Pi finished', body()
+            assert js('return [...document.querySelectorAll(".request-file")].map(b=>b.textContent).join("|")') == file.name, body()
             assert any(e.get('type') == 'tool_execution_end' and not e.get('isError') for e in events), events
             capture('companion-feedback.png')
             request(f'/session/{session}/window/rect', {'width': 720, 'height': 630})
@@ -172,9 +177,15 @@ with tempfile.TemporaryDirectory(prefix='sidelit-companion-') as temp:
             capture('companion-feedback-narrow.png')
             request(f'/session/{session}/window/rect', {'width': 1180, 'height': 820})
             # After a real edit, the request leads to what changed.
-            click('Show changes')
-            wait(lambda: js('return !!document.querySelector(".changes-bar")') and 'change' in js('return document.querySelector(".changes-bar").innerText'), 'Show changes opens the review')
+            js('document.querySelector(".request-file").click()')
+            wait(lambda: 'during this request' in js('return document.querySelector(".changes-bar")?.innerText||""'), 'a listed document opens with only this request marked')
             capture('companion-changes.png')
+            click('Compare')
+            wait(lambda: 'When the request was sent' in body(), 'compare with the version when the request was sent')
+            click('Back to draft')
+            # This fixture changed the page before sending too, so more is waiting beneath.
+            click('All unreviewed')
+            wait(lambda: 'since you last reviewed' in js('return document.querySelector(".changes-bar")?.innerText||""'), 'all unreviewed changes return')
             click('Mark reviewed')
             js('document.querySelector(".feedback-button").click()')
             wait(lambda: js('return !document.querySelector(".feedback-panel").hidden'), 'request reopens after showing changes')
@@ -199,6 +210,7 @@ with tempfile.TemporaryDirectory(prefix='sidelit-companion-') as temp:
             assert 'Draft only sentence.' in prompt_seen, prompt_seen[:800]
             assert 'unsavedChanges' not in prompt_seen
             wait(lambda: 'Pi finished its turn' in body(), 'Pi finished the draft request', 30)
+            wait(lambda: 'during this request' in body(), 'the draft request reports on what changed')
             assert 'Draft only sentence.' not in file.read_text(), 'sending a draft must not save it'
             assert js('return !!document.querySelector(".tab.active .dirty-dot")') or js('return !!document.querySelector(".conflict")')
             click('New request')
@@ -213,6 +225,8 @@ with tempfile.TemporaryDirectory(prefix='sidelit-companion-') as temp:
             launch(mdx)
             report = wait(lambda: js('return __previewEvents.filter(e=>e.data.source==="fixture-mdx").at(-1)?.data'), 'real MDX runtime')
             assert 'Real MDX 4' in report['text'] and report['ipc'] == 'undefined', report
+            # Writing the file also reaches the folder watcher, which rightly refreshes the frame; let it settle.
+            time.sleep(1.5)
             original_frame = js('return document.querySelector("iframe").src')
             value('select[aria-label="Theme"]', 'light')
             assert js('return document.querySelector("iframe").src') == original_frame, 'appearance must not remount MDX'
@@ -264,6 +278,7 @@ with tempfile.TemporaryDirectory(prefix='sidelit-companion-') as temp:
             print(json.dumps({'result': 'PASS', 'pi': 'real runtime, offline deterministic model, real edit tool', 'rexBlock': target.get('blockId'), 'checks': ['sandbox script opt-in', 'no IPC or parent access', 'relative CSS/image assets', 'asset watcher', 'HTML/MDX/dev-server scroll restoration', 'nested scroll and inserted-content anchors', 'text and DOM selection', 'viewport', 'busy Pi follow-up and consumption ack', 'live agent edit refresh at reading position', 'real MDX', 'MDX import errors', 'development bridge enable/disable']}, indent=2), flush=True)
             try: js('setTimeout(()=>window.__TAURI_INTERNALS__.invoke("quit"),100)')
             except (ConnectionError, urllib.error.URLError): pass
+            print(json.dumps(guard.check()))
         finally:
             try:
                 if 'js' in locals(): js('setTimeout(()=>window.__TAURI_INTERNALS__.invoke("quit"),100)')

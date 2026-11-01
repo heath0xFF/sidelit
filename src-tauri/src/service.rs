@@ -48,6 +48,9 @@ impl Service {
             Err("This path has not been authorized. Use Open File or Open Folder.".into())
         }
     }
+    pub(crate) fn open_documents(&self) -> Vec<PathBuf> {
+        self.0.lock().unwrap().open.iter().cloned().collect()
+    }
     pub(crate) fn document(&self, path: &Path) -> Result<PathBuf> {
         let p = self.allowed(path)?;
         if p != path || !self.0.lock().unwrap().open.contains(&p) {
@@ -150,6 +153,14 @@ pub fn enqueue(app: &AppHandle, request: Request) {
     inner.requests.push_back(request);
     drop(inner);
     let _ = app.emit("open-requests", ());
+    bring_forward(app);
+}
+
+pub fn bring_forward(app: &AppHandle) {
+    #[cfg(feature = "desktop-test")]
+    if crate::test_window::background() {
+        return;
+    }
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
         let _ = window.unminimize();

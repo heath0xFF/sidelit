@@ -84,7 +84,7 @@ Select text and choose Explain, Review or Edit, choose the Pi target, and press 
 
 If the document has unsaved changes, **Include my unsaved changes** sends up to 12 KiB of them with the request, so Pi can see them. It is on by default and you can turn it off. They are not on disk, so an edit from Pi can conflict with your draft; Sidelit keeps the draft and offers Compare.
 
-The request shows when Pi finishes its turn, and the toolbar button changes to **Pi finished**. That does not mean the request succeeded. If open documents changed, **Show changes** takes you to them. Notes batches show this while **Notes** is open.
+The request shows when Pi finishes its turn, and the toolbar button changes to **Pi finished**. That does not mean the request succeeded. Sidelit then lists the documents in the project that differ from when you sent it, whether Pi changed them or something else did. Choose one to open it with only those changes marked, and **All unreviewed** to also see anything from before. Only documents are listed, not code. Notes batches show this while **Notes** is open. The comparison happens once, when you first see the finished state, and is forgotten when the app quits.
 
 End-to-end example: run `cd ~/code/site && pi` in Rex, open `src/pages/index.mdx` in Sidelit, press `Cmd/Ctrl+Shift+I`, click the navigation element, enter “Make this navigation more compact,” choose `Pi · site`, and press **Send to Pi**. After Pi edits the file, Sidelit refreshes the clean preview automatically.
 
@@ -125,6 +125,8 @@ sidelit path/to/file.md
 sidelit path/to/folder
 sidelit --source 'notes/研究 notes.md'
 sidelit --find 'some text' notes/plan.md
+sidelit --find 'one passage' --note 'Why this matters' --find 'another' notes/plan.md
+sidelit --then --find 'a third' --note 'And here' notes/other.md
 sidelit --help
 sidelit --version
 ```
@@ -266,7 +268,9 @@ When a file changes on disk, such as after Pi edits it, a bar above the document
 - **Previous** and **Next** (⇧F8 and F8) step through the changes.
 - **Revert this** puts one passage back in your draft and **Undo revert** takes that back. Nothing is written until you save.
 - **Compare** shows both versions side by side. **Mark reviewed** clears the marks; it does not change the file.
-- Your own saved edits stay marked too, until you mark them reviewed. A first rich edit can normalize Markdown such as `-` bullets, and that shows up as a change. Marks last until the tab closes or the app quits.
+- Your own saved edits stay marked too, until you mark them reviewed.
+- Marks are saved on this computer, so they come back when you reopen the document, even after a restart. That keeps a private copy of the version you last reviewed until you choose **Mark reviewed**. Files over 2 MiB are not saved, and saved marks expire after 90 days or once 200 documents have them. A comparison started from **Changed** is not saved.
+- Rewritten syntax that reads the same is not marked: `-` and `*` bullets, `_` and `*` emphasis, heading styles, table padding, fence characters, and reference links turned into inline links. So Pi changing only those shows no bar, and neither does a first rich edit's rewriting. Git and **Compare** still see the bytes. Files over about 2 MiB, MDX, and HTML compare by line.
 
 ## Finding your way around
 
@@ -280,6 +284,10 @@ Links open other documents in tabs and follow heading anchors, so `other.md#setu
 
 An agent or script can point you at a passage with `sidelit --find "some text" path/to/file.md`. It opens the file and marks the first match, ignoring case if there is no exact match. A match must sit within one paragraph or block. If nothing matches, Sidelit says so.
 
+Adding `--note`, or several `--find`s, starts a walkthrough: a bar above the document shows each stop's note, with **Previous**, **Next** (⇧F9 and F9), and **Done**. `--then` adds stops to the current walkthrough, including from another document, without moving you. A request holds up to 20 stops, and a walkthrough up to 50. A new walkthrough replaces the old one, and a walkthrough is not saved across restarts. Notes are shown as plain text.
+
+⌘F opens Find in the rich editor. It ignores case and finds text across bold and italics. Enter or ⌘G goes to the next match, ⇧Enter or ⇧⌘G to the previous, and Esc closes it. Selected text fills the field. It also searches code blocks, which it outlines. Find does not see drawn math or raw HTML, and it stops counting at 1,000. Source has its own ⌘F. An HTML preview has no Find, so use Source.
+
 ## Math
 
-While reading Markdown, `$E=mc^2$`, `$$x+y$$`, and paragraphs that are only `$$ … $$` are drawn as math. Edit shows the source again, and the file never changes. Money and shell variables such as `$5` and `$HOME` stay text, because an opening `$` cannot be followed by a space or digit and a closing `$` cannot be preceded by a space or followed by a letter or digit. Markdown treats a backslash before punctuation as an escape, so `\{` draws as `{`; `\frac` and other letter commands are unaffected.
+While reading Markdown, `$E=mc^2$`, `$$x+y$$`, and paragraphs that are only `$$ … $$` are drawn as math. Edit shows the source again, and the file never changes. Money and shell variables such as `$5` and `$HOME` stay text, because an opening `$` cannot be followed by a space or digit and a closing `$` cannot be preceded by a space or followed by a letter or digit. Math is drawn from the Markdown source, so `\{`, `\\`, and `\,` work, and `\$x\$` stays text. Text like `$HOME$` still looks like math and is drawn as it. Markdown formatting inside math, such as `$a*b*c$`, is read as emphasis first, so that math stays text.

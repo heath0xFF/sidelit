@@ -9,8 +9,17 @@ export interface OpenRequest {
   path: string;
   directory: boolean;
   source: boolean;
-  find?: string | null;
+  stops: { find: string; note?: string | null }[];
+  append: boolean;
   anchor?: string | null;
+}
+export interface RequestFile {
+  path: string;
+  status: "modified" | "added" | "removed";
+}
+export interface RequestReport {
+  files: RequestFile[];
+  incomplete: boolean;
 }
 export interface GitFile {
   path: string;
@@ -102,6 +111,10 @@ export const api = {
     invoke<PreviewAsset>("preview_asset", { document, reference }),
   publishPreview: (id: string, html: string) => invoke<string>('publish_preview', { id, html }),
   releasePreview: (id: string) => invoke<void>('release_preview', { id }),
+  loadBaseline: (path: string) => invoke<Snapshot | null>("load_baseline", { path }),
+  storeBaseline: (path: string, text: string | null) => invoke<void>("store_baseline", { path, text }),
+  requestChanges: (id: string) => invoke<RequestReport | null>("request_changes", { id }),
+  requestBaseline: (id: string, path: string) => invoke<Snapshot | null>("request_baseline", { id, path }),
   gitStatus: (path: string) => invoke<GitStatus>("git_status", { path }),
   gitCommitted: (path: string) => invoke<Snapshot | null>("git_committed", { path }),
   search: (path: string, query: string) => invoke<SearchResults>("search_documents", { path, query }),

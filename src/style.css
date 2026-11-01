@@ -1273,6 +1273,25 @@ textarea {
 .source-change-bar { background: var(--accent); width: 3px !important; margin-left: 3px; }
 .source-change-removed { border-top: 2px solid var(--error); width: 12px !important; margin-left: 3px; }
 .changes-bar { flex-wrap: wrap; }
+.walk-bar { flex-wrap: wrap; }
+.walk-stop { flex: 1 1 240px; min-width: 0; }
+.walk-place { color: var(--muted); }
+.walk-place strong { font-weight: 600; color: var(--text); }
+.walk-stop p { margin: 2px 0 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.find-bar { flex-wrap: wrap; padding-block: 5px; }
+.find-bar input { flex: 0 1 260px; min-width: 120px; height: 26px; font-size: 12px; }
+.find-bar .find-count { flex: 1 1 auto; min-width: 72px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.rich-editor .sidelit-find { background: var(--selected); border-radius: 2px; }
+.rich-editor .sidelit-find.active { background: var(--action); color: var(--on-action); }
+.rich-editor .ProseMirror .sidelit-find-block { outline: 1px solid var(--line); outline-offset: 2px; }
+.rich-editor .ProseMirror .sidelit-find-block.active { outline: 2px solid var(--accent); }
+.request-changes { margin: var(--space-2) 0 0; }
+.request-changes p { margin: 0 0 var(--space-1); }
+.request-changes ul { list-style: none; margin: 0; padding: 0; max-height: 160px; overflow-y: auto; }
+.request-changes li { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.request-file { flex: 0 1 auto; min-width: 0; max-width: 100%; text-align: left; overflow-wrap: anywhere; }
+span.request-file { color: var(--muted); text-decoration: line-through; }
+.git-mark.removed { color: var(--error); }
 .changes-summary { flex: 1 1 240px; min-width: 0; }
 .changes-summary strong { font-weight: 600; }
 .changes-current { overflow-wrap: anywhere; color: var(--muted); }

@@ -57,6 +57,13 @@ describe('Crepe round trip', () => {
     expect(await roundTrip(markdown)).toBe(markdown);
     expect(await roundTrip(opening + markdown, true)).toBe('Edited ' + opening + markdown);
   });
+  it('marks only the edited passage after a rich edit rewrites the rest', async () => {
+    const before = 'Opening.\n\n* star\n* bullets\n\nSome _word_ and __bold__.\n\nTitle\n=====\n\n***\n\n~~~js\ncode\n~~~\n\n|a|b|\n|-|-|\n|1|2|\n\nSee [x][d].\n\n[d]: https://a.b\n';
+    const after = await roundTrip(before, true);
+    expect(after).not.toBe('Edited ' + before);
+    const { changes } = computeChanges(before, after, 'markdown');
+    expect(changes.map(change => [change.kind, change.newText])).toEqual([['changed', 'Edited Opening.']]);
+  });
   it('keeps link targets when it inlines reference links', async () => {
     expect(await roundTrip('See [docs][d].\n\n[d]: https://a.b\n')).toBe('See [docs](https://a.b).\n');
   });

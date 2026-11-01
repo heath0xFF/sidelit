@@ -8,7 +8,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-use tauri::command;
+use crate::requests::{self, Requests};
+use crate::service::Service;
+use tauri::{command, State};
 
 const MAX_REGISTRY_BYTES: u64 = 64 * 1024;
 
@@ -624,9 +626,18 @@ fn parse_ack(response: &str, id: &str) -> Result<DeliveryAck, String> {
 
 #[command]
 pub async fn send_feedback(
+    service: State<'_, Service>,
+    requests: State<'_, Requests>,
     target_id: String,
     message: FeedbackMessage,
 ) -> Result<DeliveryAck, String> {
+    requests::begin(
+        &service,
+        &requests,
+        &message.id,
+        message.project_root.as_deref(),
+    )
+    .await;
     tauri::async_runtime::spawn_blocking(move || {
         delivery(
             target_id,
@@ -639,7 +650,19 @@ pub async fn send_feedback(
 }
 
 #[command]
-pub async fn send_review(target_id: String, message: FeedbackBatch) -> Result<DeliveryAck, String> {
+pub async fn send_review(
+    service: State<'_, Service>,
+    requests: State<'_, Requests>,
+    target_id: String,
+    message: FeedbackBatch,
+) -> Result<DeliveryAck, String> {
+    requests::begin(
+        &service,
+        &requests,
+        &message.id,
+        message.project_root.as_deref(),
+    )
+    .await;
     tauri::async_runtime::spawn_blocking(move || {
         delivery(
             target_id,

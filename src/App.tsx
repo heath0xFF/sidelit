@@ -13,6 +13,10 @@ import { listen } from "@tauri-apps/api/event";
 import { api, type AgentTarget, type Entry, type GitFile, type Snapshot, type RecoveryStatus, type AvailableUpdate, type DeliveryAck } from "./api";
 import ChangesBar from "./ChangesBar";
 import { computeChanges, draftChanges, revertChange } from "./changes";
+import { Baselines } from "./baselines";
+import FindBar from "./FindBar";
+import WalkBar from "./WalkBar";
+import { extendWalk, isWalk, stepWalk, type Walk, type WalkStop } from "./walk";
 import Outline from "./Outline";
 import { headingForAnchor, headings, type Heading } from "./headings";
 import type { Jump } from "./jump";
@@ -296,6 +300,13 @@ export default function App() {
   const [changeNav, setChangeNav] = useState({ index: 0, nonce: 0 });
   const [changesUnmapped, setChangesUnmapped] = useState(false);
   const [reverted, setReverted] = useState<{ path: string; before: string; after: string }>();
+  // Narrows the marks to one request; the document's own baseline stays underneath.
+  const [requestScope, setRequestScope] = useState<{ path: string; before: Snapshot }>();
+  const [find, setFind] = useState({ open: false, query: "", index: 0, nonce: 0, focus: 0 });
+  const [findCount, setFindCount] = useState(0);
+  const [walk, setWalk] = useState<Walk>();
+  const walkRef = useRef(walk);
+  walkRef.current = walk;
   const [feedbackAck, setFeedbackAck] = useState<DeliveryAck>();
   const [editing, setEditing] = useState(false);
   const [selection, setSelection] = useState<SelectionContext | null>(null);
@@ -329,6 +340,8 @@ export default function App() {
   const history = useRef<EditorHistory | null>(null);
   const report = useCallback((e: unknown) => setError(String(e)), []);
   const journal = useMemo(() => new RecoveryWriter(api.storeSession, report), [report]);
+  const baselines = useMemo(() => new Baselines(documents, api, report), [report]);
+  useEffect(() => { baselines.sync(); }, [baselines, docs]);
   const checkUpdates = useCallback(async (manual = false) => {
     if (checkingUpdateRef.current || quitting.current || !initializedRef.current) return;
     checkingUpdateRef.current = true;
@@ -358,7 +371,10 @@ export default function App() {
   const reason = doc?.reason;
   const mode = doc?.mode;
   const comparison = compare?.path === active ? compare : null;
-  const changeSet = useMemo(() => doc?.review ? computeChanges(doc.review.text, doc.text, doc.format) : undefined, [doc?.review?.text, doc?.text, doc?.format]);
+  const scope = requestScope?.path === doc?.path ? requestScope : undefined;
+  const reviewBase = scope?.before ?? doc?.review;
+  const changeSet = useMemo(() => reviewBase ? computeChanges(reviewBase.text, doc!.text, doc!.format) : undefined, [reviewBase?.text, doc?.text, doc?.format]);
+  const findable = doc?.format === "markdown" && mode === "rendered" && !comparison && !serverUrl;
   const outline = useMemo(() => doc && !serverUrl && sidebarView === "outline" ? headings(doc.text, doc.format) : [], [doc?.text, doc?.format, serverUrl, sidebarView]);
   const gitMarks = useMemo(() => {
     const marks = new Map<string, GitFile["status"] | "folder">();
@@ -369,8 +385,7 @@ export default function App() {
     return marks;
   }, [gitFiles, workspace]);
   const feedbackDoc = feedback?.document.path ? docs.find(d => d.path === feedback.document.path) : undefined;
-  const feedbackDraft = useMemo(() => feedbackDoc && dirty(feedbackDoc) ? draftChanges(feedbackDoc.disk.text, feedbackDoc.text) : undefined, [feedbackDoc?.disk.text, feedbackDoc?.text]);
-  const reviewable = useMemo(() => feedbackAck?.status === "settled" ? docs.flatMap(d => d.review ? [{ path: d.path, count: computeChanges(d.review.text, d.text, d.format).changes.length }] : []).filter(d => d.count) : [], [feedbackAck?.status, docs]);
+  const feedbackDraft = useMemo(() => feedbackDoc && dirty(feedbackDoc) ? draftChanges(feedbackDoc.disk.text, feedbackDoc.text, feedbackDoc.format) : undefined, [feedbackDoc?.disk.text, feedbackDoc?.text, feedbackDoc?.format]);
   const projectRoot = (!doc || !workspace || doc.path.startsWith(workspace + '/') ? workspace : '') || doc?.path.split("/").slice(0, -1).join("/") || undefined;
   const captureFeedback = (selection: SelectionContext, intent: FeedbackIntent): FeedbackMessage => {
     const document = serverUrl
@@ -474,12 +489,16 @@ export default function App() {
   const goToChange = useCallback((index: number) => {
     setChangeNav(old => ({ index, nonce: old.nonce + 1 }));
   }, []);
-  useEffect(() => { setChangeNav({ index: 0, nonce: 0 }); setReverted(undefined); }, [active, doc?.review?.hash]);
+  useEffect(() => { setChangeNav({ index: 0, nonce: 0 }); setReverted(undefined); }, [active, reviewBase?.hash]);
+  useEffect(() => { setFind(old => ({ ...old, index: 0 })); setFindCount(0); }, [active]);
   useEffect(() => {
     const count = changeSet?.changes.length ?? 0;
     if (changeNav.index >= count && count) setChangeNav(old => ({ ...old, index: count - 1 }));
     // Nothing left to review, such as after reverting the only change or an agent undoing its edit.
-    if (doc?.review && changeSet && !count && !reverted) documents.update(doc.path, { review: undefined, reviewFrom: undefined });
+    if (doc && changeSet && !count && !reverted) {
+      if (scope) setRequestScope(undefined);
+      else if (doc.review) documents.update(doc.path, { review: undefined, reviewFrom: undefined });
+    }
   }, [changeSet]);
   const stepChange = (delta: number) => {
     const count = changeSet?.changes.length;
@@ -494,6 +513,34 @@ export default function App() {
     const after = revertChange(doc.text, change);
     setReverted({ path: doc.path, before: doc.text, after });
     documents.edit(doc.path, after);
+  };
+  const openFromRequest = async (id: string, path: string) => {
+    await open(path);
+    const before = await api.requestBaseline(id, path);
+    const opened = documents.get(path);
+    if (before && opened && before.text !== opened.text) {
+      if (!opened.review) documents.update(path, { review: before, reviewFrom: "disk" });
+      setRequestScope({ path, before });
+    }
+    setFeedbackOpen(false); setReviewOpen(false);
+    goToChange(0);
+  };
+  const stepFind = (delta: number) => {
+    if (findCount) setFind(old => ({ ...old, index: (old.index + delta + findCount) % findCount, nonce: old.nonce + 1 }));
+  };
+  const closeFind = () => { setFind(old => ({ ...old, open: false })); (document.querySelector(".ProseMirror") as HTMLElement | null)?.focus(); };
+  const goToStop = useCallback(async (stop: WalkStop) => {
+    await open(stop.path, stop.source);
+    // An agent often writes a file and points at it at once; look at what it wrote.
+    await documents.refresh(stop.path);
+    pointTo(stop.path, { text: stop.find });
+  }, [open, pointTo]);
+  const stepThroughWalk = (delta: number) => {
+    if (!walk) return;
+    const next = stepWalk(walk, delta);
+    if (next.index === walk.index) return;
+    setWalk(next);
+    void goToStop(next.stops[next.index]).catch(report);
   };
   const refreshGit = useCallback(() => {
     const path = workspaceRef.current;
@@ -573,10 +620,16 @@ export default function App() {
             try {
               if (request.directory) await root(request.path);
               else {
+                if (isWalk(request)) {
+                  const next = extendWalk(walkRef.current, request);
+                  walkRef.current = next.walk;
+                  setWalk(next.walk);
+                  if (next.go) await goToStop(next.walk.stops[next.walk.index]);
+                  continue;
+                }
                 await open(request.path, request.source);
-                // An agent often writes a file and points at it at once; look at what it wrote.
-                if (request.find || request.anchor) await documents.refresh(request.path);
-                if (request.find) pointTo(request.path, { text: request.find });
+                if (request.stops.length || request.anchor) await documents.refresh(request.path);
+                if (request.stops[0]) pointTo(request.path, { text: request.stops[0].find });
                 if (request.anchor) {
                   const opened = documents.get(request.path);
                   const heading = opened && headingForAnchor(headings(opened.text, opened.format), request.anchor);
@@ -610,7 +663,7 @@ export default function App() {
       drainRef.current = () => {};
       off.forEach((fn) => fn());
     };
-  }, [open, report, pointTo]);
+  }, [open, report, pointTo, goToStop]);
   useEffect(() => {
     const media = matchMedia("(prefers-color-scheme: dark)");
     const update = (event: MediaQueryListEvent) => setSystemDark(event.matches);
@@ -697,6 +750,7 @@ export default function App() {
       if (!approvalsCurrent(documents, approvals, true)) throw new Error("The session changed during Quit. Try again.");
       await journal.flush(sessionSnapshot(documents, workspaceRef.current, activeRef.current, approvals));
       if (!approvalsCurrent(documents, approvals, true)) throw new Error("The session changed during Quit. Try again.");
+      await baselines.flush();
       if (reviews.snapshot().busy) throw new Error('Review notes changed during Quit. Try again.');
       if (!feedbackApprovalCurrent(feedbackRef.current, requestApproval, reviews)) throw new Error('The request changed during Quit. Try again.');
       if (updateVersion) {
@@ -814,6 +868,12 @@ export default function App() {
   };
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
+      if (e.key === "F9" && walk && !prompt && !quick && !sessionDialog && !serverDialog && !feedbackOpen && !reviewOpen && !locked) {
+        e.preventDefault();
+        e.stopPropagation();
+        stepThroughWalk(e.shiftKey ? -1 : 1);
+        return;
+      }
       if (e.key === "F8" && !prompt && !quick && !sessionDialog && !serverDialog && !feedbackOpen && !reviewOpen && !locked && changeSet?.changes.length && !comparison && !serverUrl) {
         e.preventDefault();
         e.stopPropagation();
@@ -823,6 +883,7 @@ export default function App() {
       if (e.key === "Escape" && !prompt && !quick && !sessionDialog && !serverDialog) {
         if (reviewOpen) { e.preventDefault(); setReviewOpen(false); return; }
         if (feedbackOpen || reviewAttachmentId || inspect || selection) { e.preventDefault(); dismissFeedback(); return; }
+        if (find.open && findable) { e.preventDefault(); closeFind(); return; }
       }
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && ['i', 'f', 'r', 'e'].includes(e.key.toLowerCase()) && !prompt && !quick && !sessionDialog && !serverDialog && !locked && initialized) {
         e.preventDefault();
@@ -837,6 +898,19 @@ export default function App() {
       }
       if (!(e.metaKey || e.ctrlKey) || prompt || quick || sessionDialog || serverDialog || feedbackOpen || reviewOpen || locked || !initialized) return;
       const k = e.key.toLowerCase();
+      // Source has Monaco's own Find; a preview's frame handles its own keys.
+      if (k === "f" && !e.shiftKey && !e.altKey && findable) {
+        e.preventDefault();
+        e.stopPropagation();
+        const picked = selection?.type === "text" && selection.text.length <= 200 && !selection.text.includes("\n") ? selection.text.trim() : "";
+        setFind(old => ({ ...old, open: true, query: picked || old.query, index: 0, nonce: old.nonce + 1, focus: old.focus + 1 }));
+        return;
+      }
+      if (k === "g" && !e.altKey && find.open && findable) {
+        e.preventDefault();
+        stepFind(e.shiftKey ? -1 : 1);
+        return;
+      }
       if (!e.altKey && ["+", "=", "-", "0"].includes(k)) {
         e.preventDefault();
         e.stopPropagation();
@@ -1132,6 +1206,7 @@ export default function App() {
               </button>
             </div>
           )}
+          {walk && <WalkBar walk={walk} onStep={stepThroughWalk} onDone={() => setWalk(undefined)} />}
           {doc ? (
             <>
               {doc.pending && !serverUrl && (
@@ -1161,18 +1236,22 @@ export default function App() {
                   </div>
                 </section>
               )}
-              {doc.review && changeSet && !doc.pending && !comparison && !serverUrl && <ChangesBar
+              {reviewBase && changeSet && !doc.pending && !comparison && !serverUrl && <ChangesBar
                 changes={changeSet.changes}
                 index={changeNav.index}
-                source={doc.reviewFrom}
+                source={scope ? "request" : doc.reviewFrom}
+                onShowAll={scope && doc.review && doc.review.text !== scope.before.text ? () => setRequestScope(undefined) : undefined}
                 unmapped={changesUnmapped && doc.format === "markdown" && mode === "rendered"}
                 canUndo={reverted?.path === doc.path && reverted.after === doc.text}
                 onGo={(index) => { if (doc.format === "html" && mode === "rendered") documents.setMode(doc.path, "source"); goToChange(index); }}
                 onRevert={revertCurrent}
                 onUndo={() => { if (reverted) { documents.edit(doc.path, reverted.before); setReverted(undefined); } }}
-                onCompare={() => setCompare({ path: doc.path, kind: "review", disk: doc.review! })}
-                onDone={() => { setReverted(undefined); documents.update(doc.path, { review: undefined, reviewFrom: undefined }); }}
+                onCompare={() => setCompare({ path: doc.path, kind: "review", disk: reviewBase })}
+                onDone={() => { setReverted(undefined); setRequestScope(undefined); documents.update(doc.path, { review: undefined, reviewFrom: undefined }); }}
               />}
+              {find.open && findable && <FindBar query={find.query} count={findCount} index={find.index} focus={find.focus}
+                onQuery={query => setFind(old => ({ ...old, query, index: 0, nonce: old.nonce + 1 }))}
+                onStep={stepFind} onClose={closeFind} />}
               {mode === "rendered" && /^(---|\+\+\+)[ \t]*\r?\n/.test(doc.text) && !comparison && !serverUrl && <div className="fidelity-note">Frontmatter is kept unchanged. Use Source to edit metadata.</div>}
               {reason && !comparison && !serverUrl && (
                 <div className="fidelity-note">
@@ -1182,12 +1261,12 @@ export default function App() {
               {comparison ? (
                 <>
                   <div className="comparison-help">
-                    <span>{comparison.kind === "conflict" ? "Edit your draft or use a change arrow to take disk text. Save Merged checks the disk again before writing." : `${doc.reviewFrom === "commit" ? "The last commit" : "The version you last reviewed"} and your current text. Both panes are read only.`}</span>
+                    <span>{comparison.kind === "conflict" ? "Edit your draft or use a change arrow to take disk text. Save Merged checks the disk again before writing." : `${scope ? "The version when you sent this request" : doc.reviewFrom === "commit" ? "The last commit" : "The version you last reviewed"} and your current text. Both panes are read only.`}</span>
                     {comparison.kind === "conflict" && doc.pending?.snapshot && doc.pending.snapshot.hash !== comparison.disk.hash && <button onClick={() => setCompare({ ...comparison, disk: doc.pending!.snapshot! })}>Refresh disk pane</button>}
                     {(!doc.pending || comparison.kind === "review") && <button onClick={() => setCompare(null)}>Back to draft</button>}
                   </div>
                   <div className="compare-labels">
-                    <span>{comparison.kind === "review" ? (doc.reviewFrom === "commit" ? "Last commit" : "Last reviewed version") : doc.pending?.error ? "Last available disk version" : "Reviewed disk version"} · read only</span>
+                    <span>{comparison.kind === "review" ? (scope ? "When the request was sent" : doc.reviewFrom === "commit" ? "Last commit" : "Last reviewed version") : doc.pending?.error ? "Last available disk version" : "Reviewed disk version"} · read only</span>
                     <span>{comparison.kind === "review" ? "Current text · read only" : "Your draft · editable"}</span>
                   </div>
                   <Suspense
@@ -1301,6 +1380,8 @@ export default function App() {
                   jump={jump?.path === doc.path ? jump : undefined}
                   onJumpMissed={jumpMissed}
                   onChangesUnmapped={setChangesUnmapped}
+                  search={find.open ? find : undefined}
+                  onSearchCount={setFindCount}
                 />
               ) : (
                 <Preview
@@ -1408,14 +1489,8 @@ export default function App() {
         savedNote={!!reviewEditingId}
         collectionBusy={!reviewState.ready || reviewState.busy}
         draft={feedbackDraft}
-        changeCount={reviewable.reduce((total, item) => total + item.count, 0)}
         onAck={setFeedbackAck}
-        onShowChanges={() => {
-          const first = reviewable.find(item => item.path === feedback.document.path) ?? reviewable[0];
-          if (!first) return;
-          setActive(first.path); setServerUrl(''); setCompare(null); setFeedbackOpen(false);
-          goToChange(0);
-        }}
+        onOpenChange={(id, path) => void openFromRequest(id, path).catch(report)}
         onCollect={async (includeDraft) => {
           await reviews.save({ ...feedback, id: reviewEditingId ?? feedback.id, document: { ...feedback.document, unsavedChanges: includeDraft ? feedbackDraft?.text : undefined } });
           const edited = !!reviewEditingId;
@@ -1433,6 +1508,7 @@ export default function App() {
         onClose={dismissFeedback}
       />}
       <ReviewPanel store={reviews} open={reviewOpen && !locked} onClose={() => setReviewOpen(false)} isStale={isFeedbackStale}
+        onOpenChange={(id, path) => void openFromRequest(id, path).catch(report)}
         confirm={async (title, detail) => (await ask(title, detail, ['Cancel', 'Remove'])) === 'Remove'}
         onReveal={revealFeedback} onEdit={note => {
           if (feedback && reviewEditingId === note.id) { setReviewOpen(false); setFeedbackOpen(true); return; }

@@ -30,6 +30,39 @@ Acceptance criteria:
 
 Current behavior and delivery semantics are documented in [README.md](README.md).
 
+## Send to any agent
+
+Status: idea, not started. Today requests only reach Pi. Let them reach Claude Code,
+Codex, and other agents in sessions that are already running.
+
+Likely approach, from reading how [Orca](https://github.com/stablyai/orca) does it:
+
+- Keep the Pi bridge, which has the strongest receipts.
+- For agents in Rex panes, paste the request and press Enter with
+  `com.superlogical.terminal.write`, then watch `com.superlogical.terminal.program_status`
+  for a turn starting. No start flags or restart should be needed.
+- For everything else, add Copy as prompt.
+
+To decide first: this reverses the rule that delivery never types into a terminal.
+
+Requirements if it goes ahead:
+
+- Never send to a pane that is waiting on permission, or whose process has changed.
+  Enter could answer the dialog.
+- Don't submit text the person has half typed. Orca doesn't appear to guard against this;
+  reading the screen first needs a parser for each agent.
+- Say what was actually confirmed. Sidelit can show "sent" and "a turn started" but can't
+  tie a turn to a request, and an already busy agent gives no confirmation at all.
+- Carry the no-edit instruction for Explain and Review through every route.
+- Discovery only accepts a process named `pi`; Claude's process name is its version, so
+  match on `argv0` or the status app.
+
+Unverified: `write` hasn't been tried. `program_status` has only been seen on one Claude
+Code pane; Orca's matrix lists Codex and Pi as reporting it too. Paste timing differs by
+agent, so check Orca's `src/shared/agent-prompt-injection.ts` (MIT) first. Fallbacks if
+typing is ruled out: Claude Code channels (research preview, needs a start flag) and the
+Codex app server or `codex queue`.
+
 ## switch html renderer for real browser?
 
 i have no idea if this is a good idea or not, but i wanted to capture it somewhere

@@ -2,12 +2,14 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'reac
 import { api, type AgentTarget } from './api';
 import { selectionSummary, type FeedbackMessage } from './inspection';
 import { batchMessage, type ReviewNotes } from './review';
+import RequestChanges from './RequestChanges';
 
-export default function ReviewPanel({ store, open, onClose, onEdit, onReveal, isStale, confirm }: {
+export default function ReviewPanel({ store, open, onClose, onEdit, onReveal, isStale, confirm, onOpenChange }: {
   store: ReviewNotes; open: boolean; onClose: () => void;
   onEdit: (note: FeedbackMessage) => void; onReveal: (note: FeedbackMessage) => void;
   isStale: (note: FeedbackMessage) => boolean;
   confirm: (title: string, detail: string) => Promise<boolean>;
+  onOpenChange?: (id: string, path: string) => void;
 }) {
   const { record, ready, busy, error } = useSyncExternalStore(store.subscribe, store.snapshot);
   const [selected, setSelected] = useState<string[]>([]);
@@ -108,6 +110,7 @@ export default function ReviewPanel({ store, open, onClose, onEdit, onReveal, is
       </div>
       {attempt && <div className="feedback-status" role="status">{!attempt.ack ? 'Delivery unconfirmed. Check the receipt or retry the same fixed batch.' : attempt.ack.status === 'settled' ? 'Pi finished its turn, which does not mean every note succeeded. Answers are in Pi.' : attempt.ack.status === 'received' ? 'Pi received the batch; waiting for acceptance.' : 'Pi accepted the batch. Acceptance does not mean the work is finished.'} Answers appear in Pi.
         {!attempt.ack && <button disabled={busy} onClick={() => void store.checkStatus().catch(() => {})}>Check receipt</button>}
+        {attempt.ack?.status === 'settled' && <RequestChanges id={attempt.message.id} root={attempt.message.projectRoot} onOpen={path => onOpenChange?.(attempt.message.id, path)} />}
         {target?.blockId && <button onClick={() => void api.focusAgent(target.id).catch(e => setTargetError(String(e)))}>Show in Rex</button>}
       </div>}
       {(error || targetError) && <p className="feedback-status error" role="alert">{error || targetError}</p>}

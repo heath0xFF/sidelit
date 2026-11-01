@@ -2,6 +2,8 @@
 import base64, json, os, plistlib, shutil, signal, socket, subprocess, tempfile, time, urllib.request
 from pathlib import Path
 
+from focus_guard import FocusGuard
+
 ROOT = Path(__file__).resolve().parent.parent
 BINARY = Path(os.environ['SIDELIT_TEST_BINARY'])
 OUT = ROOT / 'test-results/ux-review'
@@ -37,14 +39,11 @@ try:
         document = folder / 'reading.md'
         original = '# Reading and asking\n\nThis passage deserves a closer explanation.\n\n## Another section\n\nKeep my request while I keep reading.\n'
         document.write_text(original)
+        guard = FocusGuard(BINARY)
         launch(folder)
         launch(document)
         wait(lambda: req('/status')['ready'])
         session = req('/session', {'capabilities': {}})['sessionId']
-        if shutil.which('aerospace'):
-            windows = subprocess.check_output(['aerospace', 'list-windows', '--all', '--format', '%{window-id} %{app-bundle-id}'], text=True)
-            for line in windows.splitlines():
-                if line.endswith(' ' + identifier): subprocess.run(['aerospace', 'layout', '--window-id', line.split()[0], 'floating'], check=True)
         def js(script, *args):
             return req(f'/session/{session}/execute/sync', {'script': script, 'args': list(args)})
         def input_text(value):
@@ -150,6 +149,7 @@ try:
         report['documentBytesUnchangedByApp'] = document.read_text() == original + '\nAn external update.\n'
         assert report['documentBytesUnchangedByApp']
         report['sentAnyFeedback'] = False
+        report.update(guard.check())
 finally:
     for line in subprocess.check_output(['ps', '-axo', 'pid=,comm='], text=True).splitlines():
         parts = line.strip().split(None, 1)
