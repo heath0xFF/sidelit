@@ -1,12 +1,14 @@
 // @vitest-environment happy-dom
-import { act, useState, type ComponentProps } from 'react';
+import { act, useEffect, useState, type ComponentProps } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import FeedbackComposer from '../src/FeedbackComposer';
+import { Requests } from '../src/requests';
+import { api } from '../src/api';
 import { elementContext, feedbackSelection, sourceSelection, textContext, type FeedbackMessage } from '../src/inspection';
 import { locateSelection } from '../src/selection-dom';
 
-vi.mock('../src/api', () => ({ api: { feedbackStatus: vi.fn(), focusAgent: vi.fn() } }));
+vi.mock('../src/api', () => ({ api: { feedbackStatus: vi.fn(), focusAgent: vi.fn(), requestChanges: vi.fn().mockResolvedValue(null) } }));
 let root: Root | undefined;
 afterEach(async () => { await act(async () => root?.unmount()); document.body.replaceChildren(); root = undefined; });
 const context = (): FeedbackMessage => ({ id: 'request-1', source: 'sidelit', intent: 'explain', document: { path: '/repo/doc.md', format: 'markdown', revision: 0 }, selection: { type: 'text', text: 'Selected words' }, instruction: 'Explain this carefully.' });
@@ -15,7 +17,9 @@ async function mount(send = vi.fn().mockResolvedValue({ id: 'request-1', status:
   const host = document.createElement('div'); document.body.append(host); root = createRoot(host);
   function Fixture() {
     const [draft, setDraft] = useState(context), [open, setOpen] = useState(true);
-    return <><button id="reopen" onClick={() => setOpen(true)}>Reopen</button><FeedbackComposer context={draft} open={open} targets={[{ id: 'pi', label: 'Pi', projectRoot: '/repo', connected: true, busy: false }]} targetId="pi" onTarget={() => {}} onChange={change => setDraft(value => ({ ...value, ...change }))} onSend={send} onClose={() => setOpen(false)} onDiscard={() => {}} loading={false} targetError="" onRefreshTargets={() => {}} stale={false} candidate={null} onReplace={() => {}} onReveal={() => {}} {...extra} /></>;
+    const [requests] = useState(() => extra.requests ?? new Requests({ ...api, sendFeedback: send }));
+    useEffect(() => { const timer = setInterval(requests.poll, 1500); return () => clearInterval(timer); }, [requests]);
+    return <><button id="reopen" onClick={() => setOpen(true)}>Reopen</button><FeedbackComposer context={draft} open={open} targets={[{ id: 'pi', label: 'Pi', projectRoot: '/repo', connected: true, busy: false }]} targetId="pi" onTarget={() => {}} onChange={change => setDraft(value => ({ ...value, ...change }))} requests={requests} onClose={() => setOpen(false)} onDiscard={() => {}} loading={false} targetError="" onRefreshTargets={() => {}} stale={false} candidate={null} onReplace={() => {}} onReveal={() => {}} {...extra} /></>;
   }
   await act(async () => root!.render(<Fixture />)); return send;
 }
@@ -70,7 +74,7 @@ describe('request continuity', () => {
       const button = (label: string) => [...document.querySelectorAll('button')].find(b => b.textContent === label);
       await act(async () => button('Send to Pi')!.click());
       expect(button('Sent')?.disabled).toBe(true);
-      await act(async () => { await vi.advanceTimersByTimeAsync(300); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
       expect(document.querySelector('[role=alert]')?.textContent).toContain('did not start');
       expect(button('Retry delivery')?.disabled).toBe(false);
       await act(async () => { await vi.advanceTimersByTimeAsync(5000); });

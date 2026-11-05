@@ -96,8 +96,8 @@ with isolated_app(BINARY), tempfile.TemporaryDirectory(prefix='sidelit-companion
             request(f'/session/{session}/timeouts', {'script': 5000})
             def js(script, *args):
                 return request(f'/session/{session}/execute/sync', {'script': script, 'args': list(args)})
-            def click(text):
-                assert js('const scope=document.querySelector("dialog[open]")||document;const b=[...scope.querySelectorAll("button")].find(b=>b.textContent.trim()===arguments[0]);if(b){b.click();return true}return false', text), text
+            def click(text, scope=None):
+                assert js('const scope=arguments[1]?document.querySelector(arguments[1]):document.querySelector("dialog[open]")||document;const b=[...scope.querySelectorAll("button")].find(b=>b.textContent.trim()===arguments[0]);if(b){b.click();return true}return false', text, scope), text
             def body():
                 return js('return document.body.innerText')
             def value(selector, text):
@@ -187,7 +187,36 @@ with isolated_app(BINARY), tempfile.TemporaryDirectory(prefix='sidelit-companion
             click('Mark reviewed')
             js('document.querySelector(".feedback-button").click()')
             wait(lambda: js('return !document.querySelector(".feedback-panel").hidden'), 'request reopens after showing changes')
-            click('New request')
+            click('Hide')
+            click('Rendered')
+            wait(lambda: js('return !!document.querySelector(".preview-frame")'), 'rendered page for the next selection')
+            js('window.__previewEvents=[];const trust=document.querySelector(".preview-toolbar input[type=checkbox]");if(!trust.checked)trust.click()')
+            wait(metrics, 'inspection bridge after returning to rendered mode')
+            click('Inspect'); probe('inspect')
+            wait(lambda: js('return document.querySelector(".feedback-panel textarea")?.readOnly===false'), 'new selection starts a fresh request after sending')
+            assert js('return document.querySelector(".feedback-panel textarea").value') == ''
+            assert js('return document.querySelector(".feedback-heading button[aria-pressed=true]").textContent') == 'Edit'
+            value('.feedback-panel textarea', 'Keep this new draft while I inspect history.')
+            js('if(!document.querySelector(".sidebar"))document.querySelector(".sidebar-toggle").click()')
+            click('Requests', '.sidebar-views')
+            wait(lambda: js('return document.querySelectorAll(".request-history > ul > li").length') == 1, 'sent request retained in document history')
+            js('document.querySelector(".request-history summary").click()')
+            wait(lambda: js('return document.querySelector(".feedback-panel").hidden'), 'history leaves the draft intact but hides its composer')
+            assert 'Pi finished its turn' in js('return document.querySelector(".request-history").innerText')
+            assert js('return document.querySelector(".request-history .request-file").textContent') == file.name
+            capture('requests-history-dark.png')
+            request(f'/session/{session}/window/rect', {'width': 720, 'height': 480})
+            value('select[aria-label="Theme"]', 'light')
+            time.sleep(.2)
+            assert js('return document.documentElement.scrollWidth<=innerWidth && document.querySelector(".sidebar").scrollWidth<=document.querySelector(".sidebar").clientWidth'), 'history and sidebar tabs must fit'
+            capture('requests-history-light-minimum.png')
+            request(f'/session/{session}/window/rect', {'width': 1180, 'height': 820})
+            value('select[aria-label="Theme"]', 'dark')
+            js('document.querySelector(".feedback-button").click()')
+            wait(lambda: js('return !document.querySelector(".feedback-panel").hidden'), 'unsent draft resumes after inspecting history')
+            assert js('return document.querySelector(".feedback-panel textarea").value') == 'Keep this new draft while I inspect history.'
+            click('Discard request')
+            click('Files', '.sidebar-views')
             # An unsaved draft reaches Pi through the native bridge and the real validators.
             click('Source')
             wait(lambda: js('return !!document.querySelector(".monaco-editor")'), 'source for a draft')
@@ -221,6 +250,9 @@ with isolated_app(BINARY), tempfile.TemporaryDirectory(prefix='sidelit-companion
             mdx = folder / 'page.mdx'
             mdx.write_text('export const Heading = ({children}) => <h1>{children}</h1>\n\nexport const Probe = () => <span ref={el => {if(el)setTimeout(()=>parent.postMessage({source:"fixture-mdx",text:document.body.innerText,ipc:typeof window.__TAURI_INTERNALS__},"*"),50)}} />\n\n<Heading>Real MDX {2 + 2}</Heading>\n\n<Callout>Local component</Callout>\n\n- [x] Task\n\n```js\nconst answer = 42\n```\n\n<Probe />\n')
             launch(mdx)
+            click('Requests', '.sidebar-views')
+            wait(lambda: js('return document.querySelector(".request-history").textContent.includes("No requests sent")'), 'history is filtered to the current document')
+            click('Files', '.sidebar-views')
             report = wait(lambda: js('return __previewEvents.filter(e=>e.data.source==="fixture-mdx").at(-1)?.data'), 'real MDX runtime')
             assert 'Real MDX 4' in report['text'] and report['ipc'] == 'undefined', report
             # Writing the file also reaches the folder watcher, which rightly refreshes the frame; let it settle.

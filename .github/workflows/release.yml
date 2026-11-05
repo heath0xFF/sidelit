@@ -142,7 +142,16 @@ jobs:
 
           **This release is ad-hoc signed, not Apple-notarized.** If macOS blocks the first launch, use **System Settings → Privacy & Security → Open Anyway** for Sidelit, only if you trust this download. Do not disable Gatekeeper.
 
-          **New in 0.7.1: Stillwater.**
+          **New in 0.8.0: fresh requests and session-only history.**
+
+          - **Keep asking.** After sending a request, select another passage and choose Explain, Review, or Edit to start a fresh request. Unsent drafts still require explicit replacement; earlier change marks stay intact.
+          - **Requests sidebar.** Open **Requests** beside Files, Outline, and Changed to see requests for the current document, newest first. Expand an entry to inspect its original context, reveal its selection, check its receipt, or retry the same delivery safely. Answers stay in Pi.
+          - **Tracking continues.** Earlier requests keep their delivery state and change reports while you write the next request. Lost receipts do not create duplicate requests. Pi finishing its turn does not mean the request succeeded.
+          - **Session-only records.** History holds up to 100 recent requests across documents and clears when Sidelit quits. Pending and uncertain deliveries are not removed to make room. Older before-version snapshots can expire without removing document review marks.
+
+          **Updating from 0.7.1:** only update Sidelit. This release does not change the Pi extension or delivery protocol; no extension reinstall or `/reload` is needed.
+
+          **Included from 0.7.1: Stillwater.**
 
           - **Stillwater theme.** Choose **Actions → Theme → Stillwater** for indigo surfaces, frost actions, and an orchid cursor, matching the terminal theme of the same name. The theme covers the shell, rendered Markdown, Source, Compare, Mermaid, and MDX. Switching themes keeps your editor and draft intact.
           - **Existing preferences stay unchanged.** New installations still default to Dark. System still chooses Light or Dark. HTML and development-server pages keep their own styling.
@@ -157,7 +166,7 @@ jobs:
           - **Find in the rich editor.** Cmd+F searches across bold, italics, and code blocks. Enter or Cmd+G goes to the next match. Find never changes the document.
           - **Math from source.** Drawn math now reads the Markdown source, so `\{a\}` draws braces and `\$y\$` stays text. The file never changes.
 
-          **Agent users:** run `sidelit setup --pi --skill` after updating so agents learn `--note` and `--then`.
+          **Agent users coming from before 0.7.0:** run `sidelit setup --pi --skill` after updating so agents learn `--note` and `--then`.
 
           **Included from 0.6.0: see what Pi changed, and tell it what you're looking at.**
 
@@ -202,9 +211,9 @@ jobs:
           - **Quit safely.** Unsent requests and unsaved note edits offer **Save to Notes**, **Discard**, or **Cancel** on Quit, window close, and update/restart. Failed saves keep the app open and retain the draft. Unchanged saved notes need no extra prompt.
           - **Read Markdown with HTML comments.** Complete comments remain hidden and unchanged in a read-only Rendered preview. Use Source to edit. Raw HTML and unsupported syntax still keep their fidelity safeguards.
 
-          **Pi users:** after updating, run `sidelit setup --pi --skill`, then `/reload` in each intended Pi session. Batch delivery needs the updated extension; older extensions still support quick requests. Setup preserves custom installations.
+          **Pi users coming from before 0.4.0:** after updating, run `sidelit setup --pi --skill`, then `/reload` in each intended Pi session. Batch delivery needs the updated extension; older extensions still support quick requests. Setup preserves custom installations.
 
-          This release passed 242 frontend/bridge tests, seven test-app cleanup tests, 38 Rust tests, and packaged macOS editor, feedback, review, and real-Pi companion smoke tests. Live system Light/Dark switching still needs a manual check. VoiceOver, Intel runtime, and older macOS versions remain unverified.
+          This release passed 254 frontend/bridge tests, seven test-app cleanup tests, 38 Rust tests, and packaged macOS feedback, review, and real-Pi companion smoke tests. Live system Light/Dark switching still needs a manual check. VoiceOver, Intel runtime, and older macOS versions remain unverified.
 
           Saved notes use private OS permissions, not encryption. Force-quit or a crash can still lose an unsaved quick draft. Receipt, acceptance, and a finished turn do not mean the work succeeded; answers stay in Pi. Standalone MDX imports require your development server; server inspection requires the opt-in preview bridge. Explain/Review express intent to Pi, not an edit-permission boundary. See the README for setup and security details.
 

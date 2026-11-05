@@ -1335,9 +1335,9 @@ span.request-file { color: var(--muted); text-decoration: line-through; }
 .rich-editor .math-drawn { user-select: none; }
 .rich-editor .math-display { display: block; overflow-x: auto; }
 
-.sidebar-views { display: flex; gap: 2px; padding: 0 var(--space-2) var(--space-2); }
+.sidebar-views { display: flex; flex-wrap: wrap; gap: 2px; padding: 0 var(--space-2) var(--space-2); }
 .sidebar-views button {
-  flex: 1 1 0;
+  flex: 1 0 auto;
   min-width: 0;
   height: 26px;
   padding: 0 var(--space-1);
@@ -1357,3 +1357,21 @@ span.request-file { color: var(--muted); text-decoration: line-through; }
 .outline-list .tree-row > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .feedback-draft { display: flex; gap: var(--space-2); align-items: flex-start; }
 .feedback-draft input { flex: none; margin-top: 3px; }
+
+.request-history { padding: 0 var(--space-2) var(--space-3); font-size: 12px; overflow-wrap: anywhere; }
+.request-history-note, .request-history-status, .request-history time { color: var(--muted); }
+.request-history-note { margin: var(--space-2) 0; line-height: 1.5; }
+.request-history > ul { list-style: none; padding: 0; margin: 0; }
+.request-history > ul > li { border-top: 1px solid var(--rule); }
+.request-history summary { cursor: pointer; padding: var(--space-2) var(--space-1); border-radius: var(--radius-control); }
+.request-history summary:hover { background: var(--hover); }
+.request-history details[open] > summary { background: var(--active); }
+.request-history-heading { display: inline-flex; justify-content: space-between; gap: var(--space-2); width: calc(100% - 18px); }
+.request-history time { flex: none; font-size: 11px; font-variant-numeric: tabular-nums; }
+.request-history-excerpt { display: block; margin: var(--space-1) 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.request-history-status { display: block; font-size: 11px; }
+.request-history-detail { padding: var(--space-1); line-height: 1.5; }
+.request-history-detail blockquote { margin: var(--space-2) 0; padding-left: var(--space-2); border-left: 1px solid var(--line); white-space: pre-wrap; }
+.request-history-instruction { white-space: pre-wrap; }
+.request-history-actions { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.request-history button { font-size: 12px; text-align: left; }

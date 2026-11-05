@@ -1,5 +1,14 @@
 # Verification
 
+## v0.8.0 session-only request history
+
+- `pnpm check` and `pnpm test` pass (254 tests). New tests cover fresh selection requests, unsent-draft protection, frozen retries, lost receipts, background tracking, cached reports, document/page filtering, and bounded history.
+- Built the isolated `desktop-test` app. Packaged feedback, companion, and review smoke checks pass; all recorded zero focus steals and zero visible windows.
+- Feedback uses test API responses to check Explain → Review → Edit without clearing the previous request, including a lost receipt. Earlier requests settle while a new draft stays intact. Checking a receipt does not send again. An unavailable request snapshot leaves the document's review marks intact.
+- Companion uses a real Pi runtime with an offline fixture model and real edit tool. It checks a fresh request after delivery, the current-document history, retained change reports, and draft continuity while inspecting history. Review checks saved-note delivery and live Quit/update approvals.
+- Inspected packaged captures in `test-results/ux-review/requests-dark.png` (1180×820) and `requests-light.png` (720×480), plus HTML history captures from companion. Controls fit; the document remains the main work area. These are test-fixture captures, not production request records.
+- Release checks: frozen pnpm install, TypeScript, 254 frontend tests, seven test-app cleanup tests, Rust format/check, and 38 Rust tests passed. Packaged smoke checks used an isolated test bundle, not the installed app. Qgenie, Linux, real activation, and the full desktop/updater suites were not checked in this pass. Request history is intentionally lost on app exit; the native before-version cache still has its existing eight-request and memory limits.
+
 ## v0.7.1 Stillwater theme
 
 Stillwater is a fourth choice under Actions → Theme, matching the terminal theme of the same name. It is opt-in; new installations still default to Dark, and System still chooses between Light and Dark.

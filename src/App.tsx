@@ -10,7 +10,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { api, type AgentTarget, type Entry, type GitFile, type Snapshot, type RecoveryStatus, type AvailableUpdate, type DeliveryAck } from "./api";
+import { api, type AgentTarget, type Entry, type GitFile, type Snapshot, type RecoveryStatus, type AvailableUpdate } from "./api";
 import ChangesBar from "./ChangesBar";
 import { computeChanges, draftChanges, revertChange } from "./changes";
 import { Baselines } from "./baselines";
@@ -41,6 +41,8 @@ import { feedbackSelection, type FeedbackMessage, type SelectionContext, type Fe
 import SelectionActions from './SelectionActions';
 import Preview from "./Preview";
 import FeedbackComposer from "./FeedbackComposer";
+import RequestsPanel from './RequestsPanel';
+import { Requests, selectRequest } from './requests';
 import ReviewPanel from './ReviewPanel';
 import { ReviewNotes } from './review';
 import DevServerDialog from "./DevServerDialog";
@@ -280,8 +282,16 @@ export default function App() {
   const [inspect, setInspect] = useState(false);
   const [feedback, setFeedback] = useState<FeedbackMessage | null>(null);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
-  const [feedbackAttemptedId, setFeedbackAttemptedId] = useState<string>();
-  const unsentFeedback = !!feedback && feedback.id !== feedbackAttemptedId;
+  const requests = useMemo(() => new Requests(api), []);
+  const requestHistory = useSyncExternalStore(requests.subscribe, requests.snapshot);
+  const feedbackAttempt = requestHistory.find(item => item.context.id === feedback?.id);
+  const feedbackAck = feedbackAttempt?.ack;
+  const unsentFeedback = !!feedback && !feedbackAttempt;
+  const settledRequests = requestHistory.filter(item => item.ack?.status === 'settled').map(item => item.context.id).join(',');
+  useEffect(() => {
+    const timer = setInterval(requests.poll, 1500);
+    return () => clearInterval(timer);
+  }, [requests]);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewEditingId, setReviewEditingId] = useState<string>();
   const feedbackRef = useRef<FeedbackCloseState>({ message: null, attempted: false });
@@ -295,7 +305,7 @@ export default function App() {
   const [reveal, setReveal] = useState(0);
   const [jump, setJump] = useState<Jump>();
   const jumps = useRef(0);
-  const [sidebarView, setSidebarView] = useState<"files" | "outline" | "changed">("files");
+  const [sidebarView, setSidebarView] = useState<"files" | "outline" | "changed" | "requests">("files");
   const [gitFiles, setGitFiles] = useState<GitFile[]>([]);
   const [changeNav, setChangeNav] = useState({ index: 0, nonce: 0 });
   const [changesUnmapped, setChangesUnmapped] = useState(false);
@@ -307,7 +317,6 @@ export default function App() {
   const [walk, setWalk] = useState<Walk>();
   const walkRef = useRef(walk);
   walkRef.current = walk;
-  const [feedbackAck, setFeedbackAck] = useState<DeliveryAck>();
   const [editing, setEditing] = useState(false);
   const [selection, setSelection] = useState<SelectionContext | null>(null);
   const selectionSnapshot = useRef<FeedbackMessage | null>(null);
@@ -406,27 +415,33 @@ export default function App() {
   };
   const captureSelection = (selected: SelectionContext | null) => {
     selectionSnapshot.current = selected ? captureFeedback(selected, 'edit') : null;
+    if (selected && feedbackAttempt) setFeedbackOpen(false);
     setSelection(selected);
   };
   const openFeedback = (selected: SelectionContext, intent: FeedbackIntent = 'edit') => {
     const next = selected === selection && selectionSnapshot.current
       ? { ...selectionSnapshot.current, intent } : captureFeedback(selected, intent);
-    if (!feedback) { setFeedback(next); setFeedbackAnchor(selected.rect); }
-    else if (selected.type !== 'document' && (JSON.stringify(next.selection) !== JSON.stringify(feedback.selection) || next.document.path !== feedback.document.path || next.document.url !== feedback.document.url)) setCandidate(next);
+    const opened = selectRequest(feedback, next, !!feedbackAttempt);
+    if (opened.feedback !== feedback) { setFeedback(opened.feedback); setFeedbackAnchor(selected.rect); setReviewEditingId(undefined); }
+    setCandidate(opened.candidate);
     setFeedbackOpen(true);
     setReviewOpen(false);
     setReviewAttachmentId(undefined);
     setInspect(false);
     setSelection(null);
   };
+  const resumeFeedback = () => {
+    if (!feedback) { openFeedback(selection ?? { type: 'document', text: '' }); return; }
+    setFeedbackOpen(true); setReviewOpen(false); setReviewAttachmentId(undefined); setInspect(false); setSelection(null);
+  };
   const dismissFeedback = () => { setFeedbackOpen(false); setReviewAttachmentId(undefined); setSelection(null); setInspect(false); window.getSelection()?.removeAllRanges(); };
   const clearFeedback = () => {
     feedbackRef.current = { message: null, attempted: false };
-    setFeedback(null); setFeedbackAck(undefined); setCandidate(null); setReviewEditingId(undefined); dismissFeedback();
+    setFeedback(null); setCandidate(null); setReviewEditingId(undefined); dismissFeedback();
   };
   const previewShortcut = (key: string) => {
     if (key === 'i') setInspect(value => !value);
-    if (key === 'f') openFeedback(selection ?? { type: 'document', text: '' });
+    if (key === 'f') resumeFeedback();
     if (key === 'r') { setPreviewRefresh(value => value + 1); if (doc) void documents.refresh(doc.path); }
     if (key === 'e') setSidebar(value => !value);
   };
@@ -443,11 +458,8 @@ export default function App() {
     }).catch(error => { if (valid) setTargetError(String(error)); }).finally(() => { if (valid) setTargetsLoading(false); });
     return () => { valid = false; };
   }, [feedback?.id, targetRefresh]);
-  const sendFeedback = async (target: string, message: FeedbackMessage): Promise<DeliveryAck> => {
-    setFeedbackAttemptedId(message.id);
-    return api.sendFeedback(target, message);
-  };
   const attachedFeedback = reviewState.record.notes.find(note => note.id === reviewAttachmentId)
+    ?? requestHistory.find(item => item.context.id === reviewAttachmentId)?.context
     ?? (feedbackOpen || feedback?.id === reviewAttachmentId ? feedback : null);
   const attachedHere = attachedFeedback && (serverUrl ? !!attachedFeedback.document.url && new URL(attachedFeedback.document.url).origin === new URL(serverUrl).origin : attachedFeedback.document.path === doc?.path);
   const attachment = useMemo(() => attachedHere && attachedFeedback ? { ...attachedFeedback.selection, pageUrl: attachedFeedback.document.url } : undefined, [attachedHere, attachedFeedback?.selection, attachedFeedback?.document.url]);
@@ -519,6 +531,8 @@ export default function App() {
     await open(path);
     const before = await api.requestBaseline(id, path);
     const opened = documents.get(path);
+    setRequestScope(undefined);
+    if (!before) report('No before-version is available for this document in this request. Showing all unreviewed changes.');
     if (before && opened && before.text !== opened.text) {
       if (!opened.review) documents.update(path, { review: before, reviewFrom: "disk" });
       setRequestScope({ path, before });
@@ -551,7 +565,7 @@ export default function App() {
   useEffect(() => {
     const timer = setTimeout(refreshGit, 250);
     return () => clearTimeout(timer);
-  }, [workspace, refresh, refreshGit, feedbackAck?.status]);
+  }, [workspace, refresh, refreshGit, settledRequests]);
   useEffect(() => {
     // Commits and folders not on screen raise no watcher events.
     const timer = setInterval(refreshGit, 15_000);
@@ -968,7 +982,7 @@ export default function App() {
             <button className={'toolbar-action' + (inspect ? ' tool-active' : '')} aria-label={inspect ? 'Inspecting…' : 'Inspect'} aria-pressed={inspect} onClick={() => { setFeedbackOpen(false); setReviewOpen(false); setInspect((value) => !value); }} title="Inspect an element (⌘⇧I)">
               <Icon type="inspect" /><span>{inspect ? "Inspecting…" : "Inspect"}</span>
             </button>
-            <button className={'toolbar-action feedback-button' + (feedback ? ' has-request' : '') + (selection || feedback ? ' tool-active' : '')} aria-label={unsentFeedback ? 'Resume unsent draft' : feedbackAck?.status === 'settled' ? 'Pi finished. View request' : feedback ? 'View request' : 'Feedback'} aria-expanded={feedbackOpen} onClick={() => openFeedback(selection ?? { type: "document", text: "" })} title={unsentFeedback ? 'Resume unsent draft (⌘⇧F). Kept until app exit.' : feedback ? 'View request and delivery status (⌘⇧F)' : selection ? 'Feedback on selection (⌘⇧F)' : 'Document feedback (⌘⇧F)'}>
+            <button className={'toolbar-action feedback-button' + (feedback ? ' has-request' : '') + (selection || feedback ? ' tool-active' : '')} aria-label={unsentFeedback ? 'Resume unsent draft' : feedbackAck?.status === 'settled' ? 'Pi finished. View request' : feedback ? 'View request' : 'Feedback'} aria-expanded={feedbackOpen} onClick={resumeFeedback} title={unsentFeedback ? 'Resume unsent draft (⌘⇧F). Kept until app exit.' : feedback ? 'View request and delivery status (⌘⇧F)' : selection ? 'Feedback on selection (⌘⇧F)' : 'Document feedback (⌘⇧F)'}>
               <Icon type="feedback" /><span>{unsentFeedback ? 'Unsent draft' : feedbackAck?.status === 'settled' ? 'Pi finished' : feedback ? 'View request' : 'Feedback'}</span>
             </button>
           </>
@@ -1088,7 +1102,7 @@ export default function App() {
             <aside
               className="sidebar"
               style={{ width }}
-              aria-label="Folder browser"
+              aria-label="Document sidebar"
             >
               <div className="workspace-heading">
                 <Icon type="folder" />
@@ -1100,8 +1114,13 @@ export default function App() {
                 <button aria-pressed={sidebarView === "files"} onClick={() => setSidebarView("files")}>Files</button>
                 <button aria-pressed={sidebarView === "outline"} onClick={() => setSidebarView("outline")}>Outline</button>
                 <button aria-pressed={sidebarView === "changed"} onClick={() => setSidebarView("changed")}>Changed{gitFiles.length ? ` ${gitFiles.length}` : ""}</button>
+                <button aria-pressed={sidebarView === "requests"} onClick={() => setSidebarView("requests")}>Requests</button>
               </div>
-              {sidebarView === "outline" ? (
+              {sidebarView === "requests" ? (
+                <RequestsPanel store={requests} path={doc?.path} url={serverUrl || undefined}
+                  onInspect={() => { setFeedbackOpen(false); setReviewOpen(false); }} onError={report}
+                  onReveal={revealFeedback} onOpenChange={(id, path) => void openFromRequest(id, path).catch(report)} />
+              ) : sidebarView === "outline" ? (
                 doc && !serverUrl ? <Outline items={outline} onPick={pickHeading} /> : <div className="tree-empty">Open a document to see its headings</div>
               ) : sidebarView === "changed" ? (
                 gitFiles.length ? <ul className="tree-list">
@@ -1491,7 +1510,6 @@ export default function App() {
         savedNote={!!reviewEditingId}
         collectionBusy={!reviewState.ready || reviewState.busy}
         draft={feedbackDraft}
-        onAck={setFeedbackAck}
         onOpenChange={(id, path) => void openFromRequest(id, path).catch(report)}
         onCollect={async (includeDraft) => {
           await reviews.save({ ...feedback, id: reviewEditingId ?? feedback.id, document: { ...feedback.document, unsavedChanges: includeDraft ? feedbackDraft?.text : undefined } });
@@ -1506,7 +1524,7 @@ export default function App() {
         targetError={targetError}
         onRefreshTargets={() => setTargetRefresh(value => value + 1)}
         onTarget={id => { setTargetId(id); localStorage.setItem('sidelit.target:' + (feedback.projectRoot || feedback.document.url || 'default'), id); }}
-        onSend={sendFeedback}
+        requests={requests}
         onClose={dismissFeedback}
       />}
       <ReviewPanel store={reviews} open={reviewOpen && !locked} onClose={() => setReviewOpen(false)} isStale={isFeedbackStale}

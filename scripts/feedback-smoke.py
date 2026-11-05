@@ -149,6 +149,60 @@ try:
         report['documentBytesUnchangedByApp'] = document.read_text() == original + '\nAn external update.\n'
         assert report['documentBytesUnchangedByApp']
         report['sentAnyFeedback'] = False
+        # Keep delivery faults in the test API object, outside the shipping bridge.
+        js('[...document.querySelectorAll(".feedback-panel button")].find(b=>b.textContent==="Discard request").click()')
+        js('document.querySelector(".error-banner button")?.click()')
+        js('''import(document.querySelector('script[type=module]').src).then(m=>{
+          const api=Object.values(m).find(v=>v&&typeof v.sendFeedback==='function');
+          window.__sent=[];window.__settled=false;
+          api.agentTargets=async()=>[{id:'fixture-pi',label:'Fixture Pi',projectRoot:arguments[0],connected:true,busy:false}];
+          api.sendFeedback=async(_target,message)=>{__sent.push(message);if(__sent.length===2)throw Error('Fixture lost receipt');return {id:message.id,status:'received',delivery:'queued'}};
+          api.feedbackStatus=async(_target,id)=>({id,status:__settled?'settled':'received',delivery:__settled?'consumed':'queued'});
+          const path=arguments[1];api.requestChanges=async()=>({files:[{path,status:'modified'}],incomplete:false});
+          window.__requestsFixture=true;
+        })''', str(folder), str(document))
+        wait(lambda: js('return window.__requestsFixture'))
+        for index, intent in enumerate(['Explain', 'Review', 'Edit']):
+            js('const p=document.querySelector(arguments[0]),r=document.createRange();r.selectNodeContents(p);getSelection().removeAllRanges();getSelection().addRange(r);p.dispatchEvent(new MouseEvent("mouseup",{bubbles:true}))', '.ProseMirror h2' if index == 1 else '.ProseMirror p')
+            wait(lambda: js('return !!document.querySelector(".selection-actions")'))
+            js('[...document.querySelectorAll(".selection-actions button")].find(b=>b.textContent===arguments[0]).click()', intent)
+            wait(lambda: js('return document.querySelector(".feedback-heading button[aria-pressed=true]")?.textContent') == intent)
+            assert js('return document.querySelector(".feedback-panel textarea").value') == ''
+            assert not js('return document.querySelector(".feedback-panel textarea").readOnly')
+            if index == 2:
+                input_text('Keep this unsent edit while I read history.')
+                break
+            wait(lambda: js('return [...document.querySelectorAll(".feedback-panel button")].some(b=>b.textContent==="Send to Pi"&&!b.disabled)'))
+            js('[...document.querySelectorAll(".feedback-panel button")].find(b=>b.textContent==="Send to Pi").click()')
+            wait(lambda: js('return __sent.length') == index + 1)
+            if index == 1:
+                wait(lambda: js('return document.querySelector(".feedback-panel .error")?.textContent.includes("Fixture lost receipt")'))
+        assert js('return new Set(__sent.map(m=>m.id)).size') == 2
+        js('window.__settled=true;if(!document.querySelector(".sidebar"))document.querySelector(".sidebar-toggle").click();[...document.querySelectorAll(".sidebar-views button")].find(b=>b.textContent==="Requests").click()')
+        wait(lambda: js('return document.querySelectorAll(".request-history > ul > li").length') == 2)
+        wait(lambda: js('return [...document.querySelectorAll(".request-history-status")].some(n=>n.textContent==="Pi finished · not verified")'))
+        js('document.querySelector(".request-history summary").click()')
+        wait(lambda: js('return document.querySelector(".feedback-panel").hidden'))
+        js('[...document.querySelectorAll(".request-history button")].find(b=>b.textContent==="Check receipt").click()')
+        wait(lambda: js('return [...document.querySelectorAll(".request-history-status")].every(n=>n.textContent==="Pi finished · not verified")'))
+        assert js('return __sent.length') == 2, 'Checking a receipt must not send again'
+        assert not js('return !!document.querySelector(".error-banner")'), 'Fresh selections must not use an earlier attachment'
+        for theme, width, height in [('dark', 1180, 820), ('light', 720, 480)]:
+            req(f'/session/{session}/window/rect', {'width': width, 'height': height})
+            js('const s=document.querySelector("select[aria-label=Theme]");s.value=arguments[0];s.dispatchEvent(new Event("change",{bubbles:true}))', theme)
+            time.sleep(.2)
+            assert js('return document.documentElement.scrollWidth<=innerWidth && document.querySelector(".sidebar").scrollWidth<=document.querySelector(".sidebar").clientWidth')
+            (OUT / f'requests-{theme}.png').write_bytes(base64.b64decode(req(f'/session/{session}/screenshot')))
+        js('document.querySelector(".request-history .request-file").click()')
+        wait(lambda: js('return document.querySelector(".error-banner")?.textContent.includes("No before-version")'))
+        assert 'since you last reviewed' in js('return document.querySelector(".changes-bar").textContent')
+        feedback()
+        assert js('return document.querySelector(".feedback-panel textarea").value') == 'Keep this unsent edit while I read history.'
+        assert document.read_text() == original + '\nAn external update.\n'
+        report['freshRequestForEachIntent'] = True
+        report['historyPreservesUnsentDraft'] = True
+        report['backgroundReceiptsAndUncertainDelivery'] = True
+        report['expiredRequestSnapshotKeepsReviewMarks'] = True
         report.update(guard.check())
 finally:
     for line in subprocess.check_output(['ps', '-axo', 'pid=,comm='], text=True).splitlines():

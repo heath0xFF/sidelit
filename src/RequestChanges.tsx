@@ -4,14 +4,18 @@ import { api, type RequestReport } from "./api";
 const letters = { modified: "M", added: "A", removed: "D" };
 const labels = { modified: "Changed", added: "New", removed: "Deleted" };
 // Sidelit only knows the files differ from when the request was sent, not who changed them.
-export default function RequestChanges({ id, root, onOpen }: { id: string; root?: string; onOpen: (path: string) => void }) {
-  const [report, setReport] = useState<RequestReport | null>(null);
+export default function RequestChanges({ id, root, onOpen, report: supplied }: { id: string; root?: string; onOpen: (path: string) => void; report?: RequestReport | null }) {
+  const [loaded, setReport] = useState<RequestReport | null>();
+  const report = supplied === undefined ? loaded : supplied;
   useEffect(() => {
+    if (supplied !== undefined) return;
     let live = true;
-    void api.requestChanges(id).then((next) => { if (live) setReport(next); }).catch(() => {});
+    setReport(undefined);
+    void api.requestChanges(id).then((next) => { if (live) setReport(next); }).catch(() => { if (live) setReport(null); });
     return () => { live = false; };
-  }, [id]);
-  if (!report) return null;
+  }, [id, supplied]);
+  if (report === undefined) return null;
+  if (report === null) return <p className="request-changes">The change comparison is no longer available for this request. Document review marks are unchanged.</p>;
   const shown = (path: string) => root && path.startsWith(root + "/") ? path.slice(root.length + 1) : path.split("/").pop();
   const partial = report.incomplete ? " This folder was too large to check completely." : "";
   if (!report.files.length) return <p className="request-changes">No documents changed during this request.{partial}</p>;
