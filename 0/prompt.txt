@@ -1,0 +1,5 @@
+i think we need to implement some basic keyboard controls. like when i open the actions dropdown i have to click to clear it, i'm so used to hitting escape on my keyboard to close any open menus
+
+---
+
+also the monaco editor completions window is so annoying. please turn that off.
