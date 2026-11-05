@@ -1,0 +1,31 @@
+there's an issue with sidelit on my work laptop. i run `qgenie pi` to start a session, have my agent launch the project in sidelit, but sidelit does not see the pi session. 
+
+i'm wondering if we've set up sidelit to only look for pi sessions in ~/.pi?
+
+---
+
+`/sidelit-status` doesn't pop up as a slash command in `qgenie pi` 
+
+so thet path for qgenie pi is `~/Library/Application Support/qgenie-cli/.pi" which i ran as PI_CODING_AGENT_DIR for sidelit setup --pi... and i'm still not getting a slash command for /sidelit-status.
+
+---
+
+ok figured it out. yeah stupid qualcomm and their qgenie cli doesn't pull any skills or extensions from ~/.pi which is retarded. i got it figured out once i moved the extension over to the right directory.
+
+---
+
+ok i do have an issue with the edit/explain/review request flow. if i have text selected, and then click "send to pi" the next time i select text and click one of those three optoins, it should just default to a new request. and edits from previous requests should just show up like they do currently. 
+
+maybe we should include a "request history" left sidebar for the current doc? what do you think?
+
+---
+
+i don't think it needs durable records for now
+
+---
+
+that's fine, you can't test qgenie. does this include an update to the extension at all for pi or is it purely frontend stuff?
+
+---
+
+ok let's tag a release and push this up so i can get the updated version while i'm working on things and test this out

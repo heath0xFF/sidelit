@@ -1,0 +1,56 @@
+{
+  "cli_version": "0.12.2",
+  "checkpoint_id": "01M6PK6RY84B0SFXTH46B06YP1",
+  "session_id": "01a1ad08-8413-744c-ae10-c08a689e595b",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-05T19:33:09.253043Z",
+  "branch": "main",
+  "checkpoints_count": 7,
+  "save_step_count": 7,
+  "files_touched": [
+    "DESIGN.md",
+    "PRODUCT.md",
+    "VERIFICATION.md",
+    "docs/development.md",
+    "docs/user-guide.md",
+    "scripts/companion-smoke.py",
+    "scripts/feedback-smoke.py",
+    "src/App.tsx",
+    "src/FeedbackComposer.tsx",
+    "src/RequestChanges.tsx",
+    "src/RequestsPanel.tsx",
+    "src/requests.ts",
+    "src/style.css",
+    "tests/feedback.test.tsx",
+    "tests/requests-panel.test.tsx",
+    "tests/requests.test.ts"
+  ],
+  "agent": "Pi",
+  "model": "gpt-6-astra",
+  "turn_id": "ece5e8e119fc",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 140739,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 6893952,
+    "output_tokens": 33456,
+    "api_call_count": 76
+  },
+  "redaction": {
+    "replacements": 4,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 1,
+      "credentialed_uri": 0,
+      "entropy": 3,
+      "key_context": 0,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  },
+  "session_metrics": {
+    "turn_count": 7
+  }
+}
