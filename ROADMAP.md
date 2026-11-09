@@ -66,3 +66,15 @@ Codex app server or `codex queue`.
 ## switch html renderer for real browser?
 
 i have no idea if this is a good idea or not, but i wanted to capture it somewhere
+
+## Ghost scroll bug
+
+Status: idea, not started. When opening and scrolling a document, the program scrolls with no user input — the view jumps or drifts on its own. Needs repro steps: does it happen on all document sizes, only on first open, or only after certain operations? Check the scroll state sync between the editor and the preview pane, and whether the initial scroll position is being applied twice.
+
+## Sidebar icon clarity — "modified" vs "marked reviewed"
+
+Status: idea, not started. The left sidebar uses similar icons for "modified" (unsaved changes) and "marked reviewed" (review batch status). They are hard to distinguish at a glance. Redesign the two icons so they are visually distinct — different shape, color, or both — and verify they remain distinguishable at small sizes and in dark/light themes.
+
+## Tooltips for sidebar status icons
+
+Status: idea, not started. The sidebar icons referenced above (and any other status icons in the left sidebar) need tooltips so the meaning is discoverable without hovering guesswork. Add clear, concise tooltip text to each icon.
