@@ -30,6 +30,7 @@ pub struct Inner {
     directories: HashSet<PathBuf>,
     assets: HashMap<PathBuf, HashSet<PathBuf>>,
     watchers: HashMap<PathBuf, Debouncer<RecommendedWatcher, RecommendedCache>>,
+    unwatchable: HashSet<PathBuf>,
     requests: VecDeque<Request>,
 }
 // The first lock also serves native file-open events on the app's event loop, so it
@@ -101,7 +102,15 @@ impl Inner {
     }
 }
 
-fn sync_watches(app: &AppHandle, state: &Service) -> Result<()> {
+// A folder that cannot be watched (such as past the OS watch limit) only loses live
+// updates; it is reported, and never blocks opening or browsing.
+fn sync_watches(app: &AppHandle, state: &Service) {
+    for error in update_watches(app, state) {
+        let _ = app.emit("service-error", format!("File watcher: {error}"));
+    }
+}
+
+fn update_watches(app: &AppHandle, state: &Service) -> Vec<String> {
     let missing: Vec<PathBuf> = {
         let mut inner = state.0.lock().unwrap();
         let wanted = inner.wanted_watches();
@@ -112,12 +121,13 @@ fn sync_watches(app: &AppHandle, state: &Service) -> Result<()> {
             .collect()
     };
     let mut built = Vec::new();
+    let mut errors = Vec::new();
     for path in missing {
         if !path.is_dir() || !files::canonical(&path).is_ok_and(|p| p == path) {
             continue;
         }
         let handle = app.clone();
-        let mut watcher = new_debouncer(
+        let watcher = new_debouncer(
             Duration::from_millis(350),
             None,
             move |event: DebounceEventResult| match event {
@@ -129,21 +139,34 @@ fn sync_watches(app: &AppHandle, state: &Service) -> Result<()> {
                 }
             },
         )
-        .map_err(|e| e.to_string())?;
-        watcher
-            .watch(&path, RecursiveMode::NonRecursive)
-            .map_err(|e| e.to_string())?;
-        built.push((path, watcher));
+        .map_err(|e| e.to_string())
+        .and_then(|mut watcher| {
+            watcher
+                .watch(&path, RecursiveMode::NonRecursive)
+                .map_err(|e| format!("{}: {e}", path.display()))?;
+            Ok(watcher)
+        });
+        match watcher {
+            Ok(watcher) => built.push((path, watcher)),
+            Err(error) => errors.push((path, error)),
+        }
     }
     // A document may have closed while these were being built.
     let mut inner = state.0.lock().unwrap();
     let wanted = inner.wanted_watches();
     for (path, watcher) in built {
         if wanted.contains(&path) {
+            inner.unwatchable.remove(&path);
             inner.watchers.entry(path).or_insert(watcher);
         }
     }
-    Ok(())
+    inner.unwatchable.retain(|p| wanted.contains(p));
+    // Retried on every change, but reported once per folder.
+    errors
+        .into_iter()
+        .filter(|(path, _)| wanted.contains(path) && inner.unwatchable.insert(path.clone()))
+        .map(|(_, error)| error)
+        .collect()
 }
 
 pub fn enqueue(app: &AppHandle, request: Request) {
@@ -212,7 +235,7 @@ pub async fn open_document(
     }
     let snapshot = files::snapshot(&path)?;
     state.0.lock().unwrap().open.insert(path.clone());
-    sync_watches(&app, &state)?;
+    sync_watches(&app, &state);
     let parent = path.parent().ok_or("Missing parent")?.to_path_buf();
     // A selected document grants browsing its parent, but not arbitrary ancestors.
     state.0.lock().unwrap().roots.insert(parent.clone());
@@ -245,7 +268,8 @@ pub fn close_document(app: AppHandle, state: State<Service>, path: PathBuf) -> R
         inner.open.remove(&path);
         inner.assets.remove(&path);
     }
-    sync_watches(&app, &state)
+    sync_watches(&app, &state);
+    Ok(())
 }
 #[tauri::command]
 pub fn set_workspace(app: AppHandle, state: State<Service>, path: PathBuf) -> Result<()> {
@@ -258,7 +282,8 @@ pub fn set_workspace(app: AppHandle, state: State<Service>, path: PathBuf) -> Re
         inner.directories.clear();
         inner.directories.insert(path);
     }
-    sync_watches(&app, &state)
+    sync_watches(&app, &state);
+    Ok(())
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -297,7 +322,7 @@ pub async fn list_directory(
             .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
     });
     state.0.lock().unwrap().directories.insert(path);
-    sync_watches(&app, &state)?;
+    sync_watches(&app, &state);
     Ok(entries)
 }
 #[tauri::command]
@@ -308,7 +333,8 @@ pub fn collapse_directory(app: AppHandle, state: State<Service>, path: PathBuf) 
         .unwrap()
         .directories
         .retain(|p| !p.starts_with(&path));
-    sync_watches(&app, &state)
+    sync_watches(&app, &state);
+    Ok(())
 }
 
 #[tauri::command]
@@ -317,6 +343,7 @@ pub async fn save_copy(
     state: State<'_, Service>,
     path: Option<PathBuf>,
     text: String,
+    name: Option<String>,
 ) -> Result<Option<Opened>> {
     if let Some(path) = &path {
         state.0.lock().unwrap().registered(path)?;
@@ -330,6 +357,7 @@ pub async fn save_copy(
                 p.extension().unwrap_or_default().to_string_lossy()
             )
         })
+        .or_else(|| name.as_deref().and_then(suggested_name))
         .unwrap_or_else(|| "Untitled.md".into());
     let selected = app
         .dialog()
@@ -345,10 +373,19 @@ pub async fn save_copy(
         &selected.into_path().map_err(|e| e.to_string())?,
         &text,
     )?;
-    if let Err(error) = sync_watches(&app, &state) {
-        let _ = app.emit("service-error", error);
-    }
+    sync_watches(&app, &state);
     Ok(Some(opened))
+}
+
+// Only a plain file name is suggested; the person still chooses the folder in the dialog.
+fn suggested_name(name: &str) -> Option<String> {
+    let file = Path::new(name).file_name()?.to_str()?;
+    (file == name
+        && file.chars().count() <= 120
+        && !file.starts_with('.')
+        && !file.chars().any(char::is_control)
+        && files::supported_document(Path::new(file)))
+    .then(|| file.to_string())
 }
 
 fn create_selected(state: &Service, selected: &Path, text: &str) -> Result<Opened> {
@@ -442,7 +479,8 @@ fn watch_asset(app: &AppHandle, state: &Service, doc: PathBuf, target: &Path) ->
         }
         paths.insert(parent);
     }
-    sync_watches(app, state)
+    sync_watches(app, state);
+    Ok(())
 }
 
 #[tauri::command]
@@ -453,13 +491,13 @@ pub async fn preview_asset(
     reference: String,
 ) -> Result<PreviewAsset> {
     let (doc, target) = local_asset(&state, &document, &reference)?;
-    watch_asset(&app, &state, doc, &target)?;
     let ext = target
         .extension()
         .unwrap_or_default()
         .to_string_lossy()
         .to_ascii_lowercase();
     if matches!(ext.as_str(), "css" | "js" | "mjs") {
+        watch_asset(&app, &state, doc, &target)?;
         let bytes = files::read_bytes(&target, files::MAX_BYTES)?;
         return Ok(PreviewAsset {
             kind: if ext == "css" { "style" } else { "script" },
@@ -487,6 +525,7 @@ pub async fn preview_asset(
             )
         }
     };
+    watch_asset(&app, &state, doc, &target)?;
     let bytes = files::read_bytes(&target, files::MAX_BYTES)?;
     Ok(PreviewAsset {
         kind: "data",
@@ -542,6 +581,100 @@ pub async fn open_link(
         _ => Err("This link scheme is not allowed".into()),
     }
 }
+const MAX_LINK_TARGETS: usize = 500;
+const MAX_LINKED_TEXT: u64 = 2 * 1024 * 1024;
+
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct LinkTarget {
+    reference: String,
+    status: &'static str,
+    text: Option<String>,
+}
+
+// Reports only whether local links resolve, and never on paths outside the grants.
+fn link_target(state: &Service, doc: &Path, reference: &str) -> LinkTarget {
+    let result = |status, text| LinkTarget {
+        reference: reference.to_string(),
+        status,
+        text,
+    };
+    let Some(target) = url::Url::from_file_path(doc)
+        .ok()
+        .and_then(|base| base.join(reference).ok())
+        .filter(|target| target.scheme() == "file")
+        .and_then(|target| target.to_file_path().ok())
+    else {
+        return result("missing", None);
+    };
+    let parent = doc.parent().unwrap_or(doc);
+    let granted = |path: &Path| {
+        path.starts_with(parent)
+            || state
+                .0
+                .lock()
+                .unwrap()
+                .roots
+                .iter()
+                .any(|r| path.starts_with(r))
+    };
+    // URL joining already removed `..`; check before touching the disk, then again after
+    // resolving symlinks.
+    if !granted(&target) {
+        return result("outside", None);
+    }
+    let Ok(target) = files::identity(&target) else {
+        return result("missing", None);
+    };
+    if !granted(&target) {
+        return result("outside", None);
+    }
+    if !target.exists() {
+        return result("missing", None);
+    }
+    if !files::supported_document(&target) || !target.is_file() {
+        return result("file", None);
+    }
+    // Text is only needed to check a heading anchor in the linked document.
+    let text = reference
+        .contains('#')
+        .then(|| files::read_bytes(&target, MAX_LINKED_TEXT).ok())
+        .flatten()
+        .and_then(|bytes| String::from_utf8(bytes).ok());
+    result("document", text)
+}
+
+#[tauri::command]
+pub async fn link_targets(
+    state: State<'_, Service>,
+    document: PathBuf,
+    references: Vec<String>,
+) -> Result<Vec<LinkTarget>> {
+    let doc = state.document(&document)?;
+    if references.len() > MAX_LINK_TARGETS {
+        return Err(format!("Check at most {MAX_LINK_TARGETS} links at once"));
+    }
+    Ok(references
+        .iter()
+        .map(|reference| link_target(&state, &doc, reference))
+        .collect())
+}
+
+#[tauri::command]
+pub async fn search_contents(
+    state: State<'_, Service>,
+    path: PathBuf,
+    query: String,
+) -> Result<search::ContentMatches> {
+    let root = state.allowed(&path)?;
+    if !root.is_dir() {
+        return Err("Not a directory".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || search::contents(&root, &query))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 pub async fn search_documents(
     state: State<'_, Service>,
@@ -653,9 +786,7 @@ pub async fn restore_session(
         inner.roots.insert(root.clone());
     }
     drop(inner);
-    if let Err(error) = sync_watches(&app, &state) {
-        let _ = app.emit("service-error", error);
-    }
+    sync_watches(&app, &state);
     Ok(Some(session))
 }
 
@@ -688,6 +819,58 @@ mod tests {
                 .text,
             ""
         );
+    }
+
+    #[test]
+    fn suggested_names_are_plain_document_file_names() {
+        assert_eq!(
+            suggested_name("Review notes.md").as_deref(),
+            Some("Review notes.md")
+        );
+        for bad in [
+            "../x.md",
+            "/tmp/x.md",
+            "a/b.md",
+            ".hidden.md",
+            "x.txt",
+            "",
+            "a\nb.md",
+        ] {
+            assert!(suggested_name(bad).is_none(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn link_targets_resolve_only_inside_grants() {
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        let root = files::canonical(a.path()).unwrap();
+        let outside = files::canonical(b.path()).unwrap();
+        fs::create_dir(root.join("docs")).unwrap();
+        fs::write(root.join("docs/guide.md"), "# Setup\n").unwrap();
+        fs::write(root.join("image.png"), "png").unwrap();
+        fs::write(outside.join("secret.md"), "# Secret\n").unwrap();
+        let service = Service::default();
+        let doc = root.join("index.md");
+        create_selected(&service, &doc, "draft").unwrap();
+        let status = |reference: &str| link_target(&service, &doc, reference);
+        assert_eq!(status("docs/guide.md").status, "document");
+        assert_eq!(status("docs/guide.md").text, None);
+        assert_eq!(
+            status("docs/guide.md#setup").text.as_deref(),
+            Some("# Setup\n")
+        );
+        assert_eq!(status("docs/My%20Guide.md").status, "missing");
+        assert_eq!(status("image.png").status, "file");
+        assert_eq!(status("docs").status, "file");
+        let secret = url::Url::from_file_path(outside.join("secret.md")).unwrap();
+        assert_eq!(status(secret.as_str()).status, "outside");
+        assert_eq!(status("../../../../../../no/such.md").status, "outside");
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&outside, root.join("escape")).unwrap();
+            assert_eq!(status("escape/secret.md").status, "outside");
+        }
     }
 
     #[test]

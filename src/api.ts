@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { feedbackSelection, type FeedbackMessage } from "./inspection";
 import type { FeedbackBatch, ReviewRecord } from "./review";
+import type { LinkTarget } from "./links";
 export interface Snapshot {
   text: string;
   hash: string;
@@ -61,6 +62,16 @@ export interface SearchResults {
   paths: string[];
   incomplete: boolean;
 }
+export interface ContentMatch {
+  path: string;
+  line: number;
+  snippet: string;
+  text: string;
+}
+export interface ContentResults {
+  matches: ContentMatch[];
+  incomplete: boolean;
+}
 export interface AgentTarget {
   id: string;
   label: string;
@@ -97,8 +108,8 @@ export const api = {
   read: (path: string) => invoke<Snapshot>("read_document", { path }),
   save: (path: string, expected: string, text: string) =>
     invoke<SaveResult>("save_document", { path, expected, text }),
-  copy: (path: string | null, text: string) =>
-    invoke<Opened | null>("save_copy", { path, text }),
+  copy: (path: string | null, text: string, name?: string) =>
+    invoke<Opened | null>("save_copy", { path, text, name: name ?? null }),
   close: (path: string) => invoke<void>("close_document", { path }),
   workspace: (path: string) => invoke<void>("set_workspace", { path }),
   list: (path: string) => invoke<Entry[]>("list_directory", { path }),
@@ -116,8 +127,11 @@ export const api = {
   requestChanges: (id: string) => invoke<RequestReport | null>("request_changes", { id }),
   requestBaseline: (id: string, path: string) => invoke<Snapshot | null>("request_baseline", { id, path }),
   gitStatus: (path: string) => invoke<GitStatus>("git_status", { path }),
-  gitCommitted: (path: string) => invoke<Snapshot | null>("git_committed", { path }),
+  gitCommitted: (path: string, revision?: string) => invoke<Snapshot | null>("git_committed", { path, revision: revision ?? null }),
+  gitReferences: (path: string) => invoke<string[]>("git_references", { path }),
   search: (path: string, query: string) => invoke<SearchResults>("search_documents", { path, query }),
+  searchContents: (path: string, query: string) => invoke<ContentResults>("search_contents", { path, query }),
+  linkTargets: (document: string, references: string[]) => invoke<LinkTarget[]>("link_targets", { document, references }),
   agentTargets: (projectRoot?: string) =>
     invoke<AgentTarget[]>("agent_targets", { projectRoot: projectRoot ?? null }),
   sendFeedback: (targetId: string, message: FeedbackMessage) =>

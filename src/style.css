@@ -643,6 +643,8 @@ textarea {
 .review-list .feedback-notice { margin-top: 8px; }
 .review-payload pre { white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.5 var(--font-mono); }
 .review-stale { display: flex; align-items: flex-start; gap: 6px; }
+.review-extra-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.review-extra-actions button { padding: 4px 8px; border: 1px solid var(--line); }
 .review-clear { align-self: flex-start; color: var(--muted); padding: 2px 0; }
 .review-panel .feedback-status { margin: 0; }
 .review-panel .feedback-status button { margin: 4px 4px 0 0; }
@@ -1113,8 +1115,44 @@ textarea {
   border: 1px solid var(--line);
 }
 .quick-open,
-.session-dialog {
+.session-dialog,
+.tool-dialog {
   width: 560px;
+  max-width: calc(100vw - 32px);
+}
+.quick-mode {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  margin-bottom: 12px;
+  background: var(--hover);
+  border-radius: var(--radius-surface);
+}
+.quick-mode button {
+  min-height: 28px;
+  padding: 4px 10px;
+  color: var(--muted);
+}
+.quick-mode [aria-pressed="true"] {
+  background: var(--active);
+  color: var(--text);
+}
+.tool-dialog input {
+  width: 100%;
+  font: inherit;
+  color: var(--text);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 10px 12px;
+}
+.tool-dialog .search-status {
+  font-size: 12px;
+  margin: 10px 0;
+  color: var(--muted);
+}
+.link-problems strong span {
+  font-weight: 400;
 }
 .field-label {
   display: block;

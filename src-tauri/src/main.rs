@@ -162,6 +162,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             git::git_status,
             git::git_committed,
+            git::git_references,
             baselines::load_baseline,
             baselines::store_baseline,
             requests::request_changes,
@@ -182,6 +183,8 @@ fn main() {
             preview::publish_preview,
             preview::release_preview,
             service::search_documents,
+            service::search_contents,
+            service::link_targets,
             agents::agent_targets,
             agents::send_feedback,
             agents::send_review,

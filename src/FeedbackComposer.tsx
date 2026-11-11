@@ -6,6 +6,7 @@ import { intentInstruction } from './review';
 import { Requests } from './requests';
 import { MAX_DRAFT_BYTES } from './changes';
 import RequestChanges from './RequestChanges';
+import { copyText, promptFor } from './prompt';
 
 export default function FeedbackComposer({ context, open, targets, targetId, onTarget, onChange, requests, onClose, onDiscard, loading, targetError, onRefreshTargets, stale, candidate, onReplace, onReveal, anchor, onCollect, savedNote = false, collectionBusy = false, draft, onOpenChange }: {
   context: FeedbackMessage; open: boolean; targets: AgentTarget[]; targetId: string;
@@ -24,6 +25,7 @@ export default function FeedbackComposer({ context, open, targets, targetId, onT
   const [error, setError] = useState('');
   const [acknowledgedStale, setAcknowledgedStale] = useState(false);
   const [includeDraft, setIncludeDraft] = useState(true);
+  const [copied, setCopied] = useState(false);
   const draftFits = !!draft && draft.bytes <= MAX_DRAFT_BYTES;
   const input = useRef<HTMLTextAreaElement>(null);
   const targetSelect = useRef<HTMLSelectElement>(null);
@@ -53,12 +55,21 @@ export default function FeedbackComposer({ context, open, targets, targetId, onT
     const observer = new ResizeObserver(place); observer.observe(panel.current);
     return () => { observer.disconnect(); removeEventListener('resize', place); };
   }, [open, anchor]);
+  // The same message Send to Pi would deliver, for any other agent.
+  const outgoing = () => ({ ...context, document: { ...context.document, unsavedChanges: includeDraft && draftFits ? draft!.text : undefined }, instruction: `${intentInstruction(intent)}\n\n${context.instruction.trim()}`.trim() });
+  const copyPrompt = async () => {
+    if (intent === 'edit' && !context.instruction.trim()) { setError('Add a change instruction before copying.'); return; }
+    setError('');
+    try { await copyText(promptFor(outgoing())); setCopied(true); }
+    catch (error) { setError(String(error)); }
+  };
+  useEffect(() => { setCopied(false); }, [context.instruction, context.intent, includeDraft]);
   const send = async () => {
     if (savedNote || collecting || sending || attempt?.checking || ack || !target?.connected || (intent === 'edit' && !context.instruction.trim()) || (!attempt && stale && !acknowledgedStale)) return;
     if (new TextEncoder().encode(context.instruction).length > 7400) { setError('The instruction is too long. Shorten it before sending.'); return; }
     setError('');
     try {
-      await requests.send(context, target, { ...context, document: { ...context.document, unsavedChanges: includeDraft && draftFits ? draft!.text : undefined }, instruction: `${intentInstruction(intent)}\n\n${context.instruction.trim()}`.trim() });
+      await requests.send(context, target, outgoing());
     } catch (error) { setError(String(error)); }
   };
   const collect = async () => {
@@ -106,9 +117,11 @@ export default function FeedbackComposer({ context, open, targets, targetId, onT
       {targets.map(target => <option key={target.id} value={target.id} title={target.projectRoot} disabled={!target.connected}>{target.label}{target.blockId ? ' · Rex ' + target.blockId.slice(-8) : ''}{target.connected ? target.busy ? ' · busy' : '' : ' · setup needed'}</option>)}
     </select></label><button disabled={loading || !!attempt} onClick={onRefreshTargets} aria-label="Refresh Pi sessions">Refresh</button></div>}
     <div className="feedback-footer"><button disabled={sending || collecting} onClick={onDiscard}>{savedNote ? 'Cancel changes' : attempt ? 'New request' : 'Discard request'}</button><span className="toolbar-space" />
+      {!savedNote && !attempt && <button disabled={collecting || (intent === 'edit' && !context.instruction.trim())} onClick={() => void copyPrompt()} title="Copy this request as a prompt for Claude Code, Codex, or another agent">{copied ? 'Copied' : 'Copy as prompt'}</button>}
       {onCollect && !attempt && <button className={savedNote ? 'primary' : ''} disabled={sending || collecting || collectionBusy} onClick={() => void collect()}>{collecting ? 'Saving…' : savedNote ? 'Save note' : 'Add to review'}</button>}
       {!savedNote && <button className="primary" disabled={(intent === 'edit' && !context.instruction.trim()) || !target?.connected || sending || !!attempt?.checking || collecting || !!ack || (!attempt && stale && !acknowledgedStale)} onClick={() => void send()}>{sending ? 'Sending…' : ack ? 'Sent' : attempt ? 'Retry delivery' : 'Send to Pi'}</button>}
     </div>
+    {copied && !attempt && <div className="feedback-status" role="status">Copied. Paste it into any agent. Sidelit cannot see whether it was sent or tie changes to it.</div>}
     {ack && <div className="feedback-status" role="status">{ack.status === 'settled'
       ? 'Pi finished its turn, which does not mean the request succeeded. Answers are in Pi.'
       : `${ack.status === 'received' ? (ack.delivery === 'queued' ? 'Queued for Pi’s next turn' : 'Received · awaiting Pi acceptance') : 'Pi is working on the request'}. Answers appear in Pi.`}

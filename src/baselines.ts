@@ -33,7 +33,7 @@ export class Baselines {
       if (!this.known.has(path)) return;
       this.known.set(path, saved?.hash ?? null);
       // A saved baseline is older than anything seen since this tab opened, so it wins.
-      if (saved && this.documents.get(path)) this.documents.update(path, { review: saved, reviewFrom: "disk" });
+      if (saved && this.documents.get(path)) this.documents.update(path, { review: saved, reviewFrom: "disk", reviewLabel: undefined });
       else this.sync();
     }).catch((error) => {
       this.known.set(path, null);

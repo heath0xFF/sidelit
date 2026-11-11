@@ -13,6 +13,8 @@ export interface Document {
   // The version changes are marked against, kept until the person marks them reviewed.
   review?: Snapshot;
   reviewFrom?: "disk" | "commit";
+  // The revision a commit comparison came from, when it is not the last commit.
+  reviewLabel?: string;
   pending?: { snapshot: Snapshot | null; error: string | null };
   saving: boolean;
   notice: string;
@@ -84,10 +86,12 @@ export class Documents {
     if (!doc || doc.text === text) return;
     this.update(path, { text, revision: doc.revision + 1, notice: "", reason: undefined });
   }
-  compareWithCommit(path: string, committed: Snapshot) {
+  // Never replaces marks the person has not reviewed yet. Returns whether marks were set.
+  compareWithCommit(path: string, committed: Snapshot, label?: string) {
     const doc = this.get(path);
-    if (doc && !doc.review && committed.text !== doc.text)
-      this.update(path, { review: committed, reviewFrom: "commit" });
+    if (!doc || doc.review || committed.text === doc.text) return false;
+    this.update(path, { review: committed, reviewFrom: "commit", reviewLabel: label });
+    return true;
   }
   remove(path: string) {
     this.bump(path);

@@ -61,6 +61,10 @@ Notes are saved through **Add to review**, **Save note**, or **Save to Notes** w
 
 Storage is local to Sidelit's application-support directory, under `review/notes.json`. It uses private OS permissions and atomic writes, not encryption. Limits: 20 notes, 512 KiB of saved state, and 30 KiB per batch. No document files are changed. Notes remain until removed; **Delete all saved notes** removes this storage after confirmation. If saving a note fails, the composer keeps the draft and shows the error; retry before leaving it. A force-quit during a save can lose the latest change.
 
+**Copy selected as prompt** puts the selected notes on the clipboard as one prompt, the same text Pi would receive, to paste into Claude Code, Codex, or another agent. A single request has **Copy as prompt** next to **Send to Pi**. Copying is not a delivery: Sidelit cannot see whether it was sent, notes stay unsent, and changes the agent makes are not tied to the request. Explain and Review prompts still ask the agent not to edit files, but that is an instruction, not a permission boundary.
+
+**Export all…** (or **Export selected…**) saves a readable Markdown copy of the notes as a new file you choose, and opens it. It never overwrites an existing file and does not change or send the notes.
+
 Batch delivery needs the matching Pi extension: run `sidelit setup --pi --skill` from the updated app, then `/reload` in Pi. Older receivers reject batches; the quick-request path remains supported. Acceptance means Pi consumed the message, not that work is complete. There is no automatic resolution or task history.
 
 ### Request history
@@ -276,6 +280,7 @@ When a file changes on disk, such as after Pi edits it, a bar above the document
 - **Compare** shows both versions side by side. **Mark reviewed** clears the marks; it does not change the file.
 - Your own saved edits stay marked too, until you mark them reviewed.
 - Marks are saved on this computer, so they come back when you reopen the document, even after a restart. That keeps a private copy of the version you last reviewed until you choose **Mark reviewed**. Files over 2 MiB are not saved, and saved marks expire after 90 days or once 200 documents have them. A comparison started from **Changed** is not saved.
+- **Actions → Compare with Commit…** marks what changed since any branch, tag, or commit, such as `main`, `v0.8.0`, or `HEAD~3`. It reads Git directly and never runs Git programs or writes anything. If the document already has marks, choose **Mark reviewed** first; a comparison never replaces marks you have not reviewed. Like a comparison from **Changed**, it is not saved.
 - Rewritten syntax that reads the same is not marked: `-` and `*` bullets, `_` and `*` emphasis, heading styles, table padding, fence characters, and reference links turned into inline links. So Pi changing only those shows no bar, and neither does a first rich edit's rewriting. Git and **Compare** still see the bytes. Files over about 2 MiB, MDX, and HTML compare by line.
 
 ## Finding your way around
@@ -287,6 +292,10 @@ The sidebar has three views:
 - **Changed** lists documents changed since the last commit. Opening one from here marks what differs from that commit. Deleted documents are not listed.
 
 Links open other documents in tabs and follow heading anchors, so `other.md#setup` and `#setup` both work, using GitHub's anchor rules.
+
+**Actions → Check Links…** lists local links in the current document that point at a missing file or a missing heading, including unsaved changes. Choose one to go to it. Web and email links are not opened or checked, and links outside the folders Sidelit may read are reported as not checked rather than looked up.
+
+**Actions → Search in Files…** (or **Contents** in Quick Open) finds text inside the workspace's Markdown, HTML, and MDX files, ignoring case. Choose a result to open the document at that text. It shows up to 200 matching lines, 20 per file, skips files over 2 MiB and folders like `node_modules`, and says when results are limited.
 
 An agent or script can point you at a passage with `sidelit --find "some text" path/to/file.md`. It opens the file and marks the first match, ignoring case if there is no exact match. A match must sit within one paragraph or block. If nothing matches, Sidelit says so.
 

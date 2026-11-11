@@ -135,3 +135,20 @@ export class ReviewNotes {
     finally { this.update({ busy: false }); }
   }
 }
+
+const INTENT_LABEL = { explain: 'Explain', review: 'Review', edit: 'Edit' } as const;
+const quoted = (text: string) => text.trim().split(/\r?\n/).map(line => `> ${line}`.trimEnd()).join('\n');
+// A readable copy of saved notes, to keep or share; it is not a delivery and changes nothing.
+export function notesMarkdown(notes: FeedbackMessage[], exportedAt = new Date()) {
+  const sections = notes.map((note, i) => {
+    const where = note.document.path ?? note.document.url ?? 'Document';
+    const selection = note.selection.type === 'element'
+      ? `Element \`${(note.selection.selector ?? note.selection.tag ?? 'element').replaceAll('`', "'")}\``
+      : note.selection.type === 'document' ? 'Whole document' : 'Selected text';
+    const lines = [`## ${i + 1}. ${INTENT_LABEL[note.intent ?? 'edit']} · ${where.split('/').pop()}`, '', `- Document: \`${where.replaceAll('`', "'")}\``, `- ${selection}${note.document.unsaved ? ' (from an unsaved draft)' : ''}`];
+    if (note.selection.text.trim()) lines.push('', quoted(note.selection.text));
+    lines.push('', note.instruction.trim() || '_No additional instruction_');
+    return lines.join('\n');
+  });
+  return [`# Review notes`, '', `Exported from Sidelit on ${exportedAt.toISOString().slice(0, 10)} · ${notes.length} ${notes.length === 1 ? 'note' : 'notes'}`, '', ...sections.flatMap(section => [section, ''])].join('\n');
+}
