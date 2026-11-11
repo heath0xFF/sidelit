@@ -14,7 +14,7 @@ import type { EditorHistory } from "./history";
 import { elementContext, textContext, type SelectionContext } from "./inspection";
 import { findText, locateSelection, markSelection, markTarget } from './selection-dom';
 import { blocksFit, type ChangeSet } from "./changes";
-import { claimJump, type Jump } from "./jump";
+import { claimJump, claimReveal, type Jump } from "./jump";
 import { displayMath, findInlineMath, mathSources, MAX_MATH_PER_DOCUMENT, MAX_MATH_SOURCE } from "./math";
 import { findInDocument } from "./find";
 import { addsUnsafeLink } from "./links";
@@ -36,6 +36,8 @@ const codeHighlight = syntaxHighlighting(
   ]),
 );
 const positions = new Map<string, { selection: number; scroll: number }>();
+// Images arrive over IPC; reserving their last known size stops recreated views from collapsing and shifting the page.
+const imageSizes = new Map<string, { width: number; height: number }>();
 let mathRenderer: Promise<typeof import("./math-render")> | undefined;
 let renderMath: typeof import("./math-render").renderMath | undefined;
 function mathWidget(source: string, display: boolean) {
@@ -102,7 +104,6 @@ export default function Rich({
   const root = useRef<HTMLDivElement>(null);
   const [ready, setReady] = useState(false);
   const canEdit = useRef(editable && !inspect); canEdit.current = editable && !inspect;
-  const lastReveal = useRef(0);
   const highlight = useRef<(() => void) | undefined>(undefined);
   const instance = useRef<Crepe | null>(null);
   const marks = useRef({ changes, active: changeNav?.index ?? 0, version: 0, search });
@@ -149,7 +150,7 @@ export default function Rich({
     let cleanup: (() => void) | undefined;
     const frame = requestAnimationFrame(() => {
       const node = root.current?.querySelector('.ProseMirror'); if (!node) return;
-      const shouldReveal = reveal !== lastReveal.current; lastReveal.current = reveal;
+      const shouldReveal = claimReveal(reveal);
       if (shouldReveal && !locateSelection(node, attachment)) { errors.current('The captured selection could not be located. Select the current content again.'); return; }
       cleanup = markSelection(node, attachment, shouldReveal);
     });
@@ -309,6 +310,14 @@ export default function Rich({
                   const image = document.createElement("img");
                   image.alt = node.attrs.alt ?? "";
                   image.title = node.attrs.title ?? "";
+                  const sizeKey = `${path}\n${node.attrs.src}`;
+                  const known = imageSizes.get(sizeKey);
+                  if (known) { image.width = known.width; image.height = known.height; }
+                  image.addEventListener("load", () => {
+                    if (!image.naturalWidth) return;
+                    imageSizes.set(sizeKey, { width: image.naturalWidth, height: image.naturalHeight });
+                    image.width = image.naturalWidth; image.height = image.naturalHeight;
+                  });
                   let disposed = false;
                   let read = 0;
                   const reload = () => {
@@ -319,7 +328,7 @@ export default function Rich({
                       if (!disposed && token === read) { image.src = url; image.alt = node.attrs.alt ?? ''; }
                     })
                     .catch(() => {
-                      if (!disposed && token === read) { image.removeAttribute('src'); image.alt = (node.attrs.alt ?? '') + " (image unavailable or outside allowed folders)"; }
+                      if (!disposed && token === read) { image.removeAttribute('src'); image.removeAttribute('width'); image.removeAttribute('height'); imageSizes.delete(sizeKey); image.alt = (node.attrs.alt ?? '') + " (image unavailable or outside allowed folders)"; }
                     });
                   };
                   images.current.add(reload); reload();

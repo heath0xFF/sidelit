@@ -142,7 +142,14 @@ jobs:
 
           **This release is ad-hoc signed, not Apple-notarized.** If macOS blocks the first launch, use **System Settings → Privacy & Security → Open Anyway** for Sidelit, only if you trust this download. Do not disable Gatekeeper.
 
-          **New in 0.9.0: search inside files, link checks, any-commit comparisons, and prompts for any agent.**
+          **New in 0.9.1: steadier scrolling and clearer sidebar marks.**
+
+          - **No more unexpected scrolling.** After using **Reveal selection** once, switching tabs or returning from Source no longer scrolls the document back to that selection. Images keep their space while a document reloads, such as after an agent edits it, so the page no longer jumps as they redraw.
+          - **Clearer sidebar marks.** A folder containing documents changed in Git now shows a ring, so it no longer looks like a tab's unsaved-changes dot. Both marks have tooltips.
+
+          **Updating from 0.9.0:** only update Sidelit. This release does not change the Pi extension or delivery protocol; no extension reinstall or `/reload` is needed.
+
+          **Included from 0.9.0: search inside files, link checks, any-commit comparisons, and prompts for any agent.**
 
           - **Search in Files.** Choose **Actions → Search in Files…**, or **Contents** in Quick Open, to find text inside the workspace's Markdown, HTML, and MDX. Choose a result to open the document at that text.
           - **Check Links.** **Actions → Check Links…** lists local links in the current document that point at a missing file or heading, including unsaved changes. Web links are not opened or checked.
@@ -150,8 +157,6 @@ jobs:
           - **Copy as prompt.** A request, or selected review notes, can be copied as the same prompt Pi receives, to paste into Claude Code, Codex, or another agent. Sidelit cannot see whether a copied prompt was sent.
           - **Export notes.** **Notes → Export all…** saves a Markdown copy of review notes as a new file.
           - **Fixes.** A Markdown file that already contained a `javascript:` or `data:` link could not be edited in the rich editor; now only adding a new such link is refused. Opening a folder inside a large Git worktree, such as a home-directory dotfiles repository, no longer scans the whole worktree. A folder that cannot be watched, such as past the system watch limit, no longer stops a document from opening; Sidelit reports it once and keeps working without live updates for that folder.
-
-          **Updating from 0.8.0:** only update Sidelit. This release does not change the Pi extension or delivery protocol; no extension reinstall or `/reload` is needed.
 
           **Included from 0.8.0: fresh requests and session-only history.**
 

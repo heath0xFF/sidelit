@@ -11,3 +11,10 @@ export function claimJump(jump: Jump | undefined, consumer: string): jump is Jum
   claimed.set(consumer, jump.nonce);
   return true;
 }
+let revealed = 0;
+// Reveal is an App-wide counter; a remounted view must not replay one already handled.
+export function claimReveal(reveal: number): boolean {
+  if (reveal <= revealed) return false;
+  revealed = reveal;
+  return true;
+}

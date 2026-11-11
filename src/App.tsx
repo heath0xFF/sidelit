@@ -110,7 +110,7 @@ function Icon({
 
 function GitMark({ status }: { status?: GitFile["status"] | "folder" }) {
   if (!status) return null;
-  const label = status === "added" ? "New, not committed" : status === "modified" ? "Changed since the last commit" : "Contains changes";
+  const label = status === "added" ? "Git: new, not committed" : status === "modified" ? "Git: changed since the last commit" : "Git: contains changed documents";
   return <span className={`git-mark ${status}`} title={label} aria-label={label}>{status === "added" ? "A" : status === "modified" ? "M" : ""}</span>;
 }
 
@@ -1216,6 +1216,7 @@ export default function App() {
                     {dirty(d) && (
                       <span
                         className="dirty-dot"
+                        title="Unsaved changes"
                         aria-label="Unsaved changes"
                       />
                     )}

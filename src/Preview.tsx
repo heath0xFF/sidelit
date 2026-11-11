@@ -5,7 +5,7 @@ import { lineForText, parseSelection, parseRect, type SelectionContext } from '.
 import { localServerUrl } from './preview-security';
 import { parsePreviewPosition, previewPosition, rememberPreviewPosition } from './preview-position';
 import runtime from '../public/preview-runtime/runtime.js?raw';
-import { claimJump, type Jump } from './jump';
+import { claimJump, claimReveal, type Jump } from './jump';
 import type { ResolvedTheme } from './appearance';
 
 export default function Preview({ path, source = '', format, url, inspect, onText, onElement, onError, refresh = 0, onDismiss, onShortcut, theme = 'dark', fontSize = 16, jump, onJumpMissed, attachment, reveal = 0 }: {
@@ -26,7 +26,6 @@ export default function Preview({ path, source = '', format, url, inspect, onTex
   const [height, setHeight] = useState(0);
   const [bridgeEnabled, setBridgeEnabled] = useState(false);
   const [ready, setReady] = useState(false);
-  const revealed = useRef(0);
   const compiled = useRef<string | undefined>(undefined);
   const callbacks = useRef({ onText, onElement, onError, onDismiss, onShortcut });
   callbacks.current = { onText, onElement, onError, onDismiss, onShortcut };
@@ -64,8 +63,7 @@ export default function Preview({ path, source = '', format, url, inspect, onTex
   }, [path, source, format, url, allowScripts, reload, refresh, id, remote]);
   useEffect(() => { connect(); }, [inspect, src, bridgeEnabled, theme, fontSize, attachment]);
   useEffect(() => {
-    if (ready && reveal > revealed.current && attachment && (!remote || bridgeEnabled)) {
-      revealed.current = reveal;
+    if (ready && attachment && (!remote || bridgeEnabled) && claimReveal(reveal)) {
       frame.current?.contentWindow?.postMessage({ source: 'sidelit-host', token: id, reveal: true }, remote && url ? new URL(url).origin : '*');
     }
   }, [reveal, ready, attachment, remote, bridgeEnabled, url, id]);

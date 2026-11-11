@@ -63,18 +63,10 @@ agent, so check Orca's `src/shared/agent-prompt-injection.ts` (MIT) first. Fallb
 typing is ruled out: Claude Code channels (research preview, needs a start flag) and the
 Codex app server or `codex queue`.
 
-## switch html renderer for real browser?
-
-i have no idea if this is a good idea or not, but i wanted to capture it somewhere
-
 ## Ghost scroll bug
 
-Status: idea, not started. When opening and scrolling a document, the program scrolls with no user input — the view jumps or drifts on its own. Needs repro steps: does it happen on all document sizes, only on first open, or only after certain operations? Check the scroll state sync between the editor and the preview pane, and whether the initial scroll position is being applied twice.
+Status: two likely causes fixed, awaiting confirmation on macOS. After one Reveal selection, every remount of the rich editor or HTML preview (tab switch, Source to Rendered) replayed it and scrolled to the request's selection; reveals are now claimed once, like jumps. Images arrive over IPC with no size, so recreated image views (disk reloads after an agent edit) collapsed and re-expanded above the viewport, and WebKit has no scroll anchoring; their last known size is now reserved. If drift remains, check Mermaid and KaTeX drawing after the saved scroll position is restored.
 
-## Sidebar icon clarity — "modified" vs "marked reviewed"
+## Sidebar icon clarity and tooltips
 
-Status: idea, not started. The left sidebar uses similar icons for "modified" (unsaved changes) and "marked reviewed" (review batch status). They are hard to distinguish at a glance. Redesign the two icons so they are visually distinct — different shape, color, or both — and verify they remain distinguishable at small sizes and in dark/light themes.
-
-## Tooltips for sidebar status icons
-
-Status: idea, not started. The sidebar icons referenced above (and any other status icons in the left sidebar) need tooltips so the meaning is discoverable without hovering guesswork. Add clear, concise tooltip text to each icon.
+Status: done for 0.9.1. The folder "contains changed documents" Git mark was the same filled accent dot as a tab's unsaved-changes dot; it is now a ring. Both marks have tooltips, and Git marks say "Git:" so they are not read as review or save state.
