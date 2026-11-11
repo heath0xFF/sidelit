@@ -35,6 +35,8 @@ Tauri 2 / Rust desktop app. React + TypeScript + Vite frontend. pnpm only. No El
 
 `pnpm tauri build`; `python3 scripts/updater-smoke.py` for an isolated, signed install/restart test. See `RELEASING.md` for production update artifacts and key handling.
 
+On a headless Linux host, run the pnpm and cargo checks only; `docs/development.md` lists the packages they need. Desktop and packaged checks need a Mac.
+
 Desktop checks: use the isolated `desktop-test` bundle command in `docs/development.md`, then run `scripts/desktop-smoke.py` with `SIDELIT_TEST_BINARY` set to that bundle. The test kills and restarts its own app for recovery checks. It runs in the background, so working during a run is fine. This checks packaged WKWebView, not a browser preview. Rebuild **without** the feature before distribution. See `VERIFICATION.md`.
 
 ## Safety invariants

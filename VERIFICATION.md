@@ -1,5 +1,12 @@
 # Verification
 
+## v0.9.1 steadier scrolling and clearer sidebar marks
+
+- `pnpm check` and `pnpm test` pass (264 tests). New tests cover jumps and reveals being claimed once, so a remounted editor or preview does not replay them.
+- Rust format, clippy with `-D warnings`, and tests pass (43, plus 3 in the update-manifest example). New tests cover installing only the approved update version, insecure transport staying off unless explicitly `true`, and the committed updater config requiring a public key, signed versions, HTTPS endpoints, and no dangerous flags.
+- Rust checks ran on a headless Ubuntu 26.04 host with the packages listed in `docs/development.md`, not on macOS. The release workflow runs them on macOS.
+- Not checked in this pass: whether the ghost scroll is gone in packaged WKWebView (the reveal replay and image-size causes were found by reading the code, not reproduced), packaged `desktop-test` smoke runs, and the look of the new folder ring in each theme. These need a Mac.
+
 ## v0.9.0 search in files, link checks, any-commit comparisons, copy as prompt
 
 - `pnpm check` and `pnpm test` pass (262 tests). New tests cover the unsafe-link filter (a document that already holds a `javascript:` link stays editable; adding a new one is refused), link extraction and problem reporting, Markdown note export, copied prompts matching `extensions/pi-sidelit/protocol.ts` byte for byte, and Copy selected as prompt sending nothing.

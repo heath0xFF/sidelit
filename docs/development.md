@@ -66,7 +66,11 @@ sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev \
   build-essential curl wget file
 ```
 
-Without them, `cargo check` and `cargo test` fail in `glib-sys` before any Sidelit code compiles. Run `pnpm desktop`, or package with `pnpm tauri build --bundles deb,appimage` instead of the macOS `app,dmg` targets. Linux builds and desktop integration have **not** been verified in this first version.
+Without them, `cargo check` and `cargo test` fail in `glib-sys` before any Sidelit code compiles. With them, Rust format, clippy, and tests pass on Ubuntu 26.04.
+
+A headless host needs the same packages to compile, but cannot run the app. Run `pnpm check`, `pnpm test`, and the `cargo` commands there; `pnpm desktop`, `desktop-test` bundles, and `scripts/desktop-smoke.py` need a Mac.
+
+On a Linux desktop, run `pnpm desktop`, or package with `pnpm tauri build --bundles deb,appimage` instead of the macOS `app,dmg` targets. The Linux app itself and its desktop integration have **not** been verified.
 
 ## Architecture
 
