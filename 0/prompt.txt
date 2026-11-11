@@ -1,0 +1,1 @@
+you should have sudo access, no? open it in a rex pane and run the command?
