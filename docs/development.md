@@ -58,7 +58,15 @@ That build goes under `src-tauri/target/aarch64-apple-darwin/release/bundle/`. G
 
 ## Linux
 
-The code uses portable Rust filesystem and notify APIs. Install Tauri's current [Linux prerequisites](https://v2.tauri.app/start/prerequisites/#linux), including WebKitGTK 4.1, GTK 3, a C toolchain, and librsvg. Run `pnpm desktop`, or package with `pnpm tauri build --bundles deb,appimage` instead of the macOS `app,dmg` targets. Linux builds and desktop integration have **not** been verified in this first version.
+The code uses portable Rust filesystem and notify APIs. Install Tauri's current [Linux prerequisites](https://v2.tauri.app/start/prerequisites/#linux), including WebKitGTK 4.1, GTK 3, a C toolchain, and librsvg. On Ubuntu or Debian:
+
+```sh
+sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev \
+  libayatana-appindicator3-dev librsvg2-dev libssl-dev libxdo-dev \
+  build-essential curl wget file
+```
+
+Without them, `cargo check` and `cargo test` fail in `glib-sys` before any Sidelit code compiles. Run `pnpm desktop`, or package with `pnpm tauri build --bundles deb,appimage` instead of the macOS `app,dmg` targets. Linux builds and desktop integration have **not** been verified in this first version.
 
 ## Architecture
 
