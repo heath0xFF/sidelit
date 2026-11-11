@@ -32,7 +32,7 @@ Current behavior and delivery semantics are documented in [README.md](README.md)
 
 ## Send to any agent
 
-Status: idea, not started. Today requests only reach Pi. Let them reach Claude Code,
+Status: Copy as prompt shipped in 0.9.0; direct delivery not started. Today requests only reach Pi directly. Let them reach Claude Code,
 Codex, and other agents in sessions that are already running.
 
 Likely approach, from reading how [Orca](https://github.com/stablyai/orca) does it:

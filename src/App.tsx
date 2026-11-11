@@ -34,6 +34,7 @@ import { approveClose, approvalsCurrent, approveFeedbackClose, feedbackApprovalC
 import { RecoveryWriter, sessionSnapshot } from "./recovery";
 import Dialog from "./Dialog";
 import QuickOpen from "./QuickOpen";
+import { CompareDialog, LinkCheckDialog } from "./ToolDialogs";
 import SessionDialog from "./SessionDialog";
 import Rich, { disposeRich } from "./Rich";
 import type { EditorHistory } from "./history";
@@ -44,7 +45,7 @@ import FeedbackComposer from "./FeedbackComposer";
 import RequestsPanel from './RequestsPanel';
 import { Requests, selectRequest } from './requests';
 import ReviewPanel from './ReviewPanel';
-import { ReviewNotes } from './review';
+import { notesMarkdown, ReviewNotes } from './review';
 import DevServerDialog from "./DevServerDialog";
 import { chooseTarget } from './agent-targets';
 import { forgetPreviewPosition } from './preview-position';
@@ -268,7 +269,8 @@ export default function App() {
   const [error, setError] = useState("");
   const [prompt, setPrompt] = useState<Prompt>();
   const [compare, setCompare] = useState<{ path: string; kind: "conflict" | "review"; disk: Snapshot } | null>(null);
-  const [quick, setQuick] = useState(false);
+  const [quick, setQuick] = useState<false | "names" | "contents">(false);
+  const [tool, setTool] = useState<"compare" | "links">();
   const [sessionDialog, setSessionDialog] = useState(false);
   const [initialized, setInitialized] = useState(false);
   const initializedRef = useRef(false);
@@ -510,7 +512,7 @@ export default function App() {
     // Nothing left to review, such as after reverting the only change or an agent undoing its edit.
     if (doc && changeSet && !count && !reverted) {
       if (scope) setRequestScope(undefined);
-      else if (doc.review) documents.update(doc.path, { review: undefined, reviewFrom: undefined });
+      else if (doc.review) documents.update(doc.path, { review: undefined, reviewFrom: undefined, reviewLabel: undefined });
     }
   }, [changeSet]);
   const stepChange = (delta: number) => {
@@ -797,13 +799,13 @@ export default function App() {
         document.addEventListener("beforeinput", fieldOnly, true);
         try { document.execCommand(action); }
         finally { document.removeEventListener("beforeinput", fieldOnly, true); }
-      } else if (!prompt && !quick && !sessionDialog && !reviewOpen) history.current?.(action);
+      } else if (!prompt && !quick && !tool && !sessionDialog && !reviewOpen) history.current?.(action);
       return;
     }
-    if (prompt || quick || sessionDialog || locked || !initialized) return;
+    if (prompt || quick || tool || sessionDialog || locked || !initialized) return;
     if (action === "new") void newFile();
     if (action === "save-as") void copy(false);
-    if (action === "quick") setQuick(true);
+    if (action === "quick") setQuick("names");
     if (action === "session") setSessionDialog(true);
     if (action === "updates") void checkUpdates(true);
     if (action === "close" && doc) void close(doc);
@@ -855,6 +857,19 @@ export default function App() {
     } catch (e) { report(e); }
     finally { modalBusy.current = false; }
   };
+  const exportNotes = async (notes: FeedbackMessage[]) => {
+    if (modalBusy.current || quitting.current || !notes.length) return;
+    modalBusy.current = true;
+    try {
+      const file = await api.copy(null, notesMarkdown(notes), "Review notes.md");
+      if (!file) return;
+      documents.open(file);
+      setActive(file.path);
+      setCompare(null);
+      setReviewOpen(false);
+    } catch (e) { report(e); }
+    finally { modalBusy.current = false; }
+  };
   const copy = async (resolveConflict: boolean) => {
     if (!doc || modalBusy.current || quitting.current) return;
     modalBusy.current = true;
@@ -883,24 +898,24 @@ export default function App() {
   };
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      if (e.key === "F9" && walk && !prompt && !quick && !sessionDialog && !serverDialog && !feedbackOpen && !reviewOpen && !locked) {
+      if (e.key === "F9" && walk && !prompt && !quick && !tool && !sessionDialog && !serverDialog && !feedbackOpen && !reviewOpen && !locked) {
         e.preventDefault();
         e.stopPropagation();
         stepThroughWalk(e.shiftKey ? -1 : 1);
         return;
       }
-      if (e.key === "F8" && !prompt && !quick && !sessionDialog && !serverDialog && !feedbackOpen && !reviewOpen && !locked && changeSet?.changes.length && !comparison && !serverUrl) {
+      if (e.key === "F8" && !prompt && !quick && !tool && !sessionDialog && !serverDialog && !feedbackOpen && !reviewOpen && !locked && changeSet?.changes.length && !comparison && !serverUrl) {
         e.preventDefault();
         e.stopPropagation();
         stepChange(e.shiftKey ? -1 : 1);
         return;
       }
-      if (e.key === "Escape" && !prompt && !quick && !sessionDialog && !serverDialog) {
+      if (e.key === "Escape" && !prompt && !quick && !tool && !sessionDialog && !serverDialog) {
         if (reviewOpen) { e.preventDefault(); setReviewOpen(false); return; }
         if (feedbackOpen || reviewAttachmentId || inspect || selection) { e.preventDefault(); dismissFeedback(); return; }
         if (find.open && findable) { e.preventDefault(); closeFind(); return; }
       }
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && ['i', 'f', 'r', 'e'].includes(e.key.toLowerCase()) && !prompt && !quick && !sessionDialog && !serverDialog && !locked && initialized) {
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && !e.altKey && ['i', 'f', 'r', 'e'].includes(e.key.toLowerCase()) && !prompt && !quick && !tool && !sessionDialog && !serverDialog && !locked && initialized) {
         e.preventDefault();
         previewShortcut(e.key.toLowerCase());
         return;
@@ -911,7 +926,7 @@ export default function App() {
         actionRef.current(e.shiftKey ? "redo" : "undo");
         return;
       }
-      if (!(e.metaKey || e.ctrlKey) || prompt || quick || sessionDialog || serverDialog || feedbackOpen || reviewOpen || locked || !initialized) return;
+      if (!(e.metaKey || e.ctrlKey) || prompt || quick || tool || sessionDialog || serverDialog || feedbackOpen || reviewOpen || locked || !initialized) return;
       const k = e.key.toLowerCase();
       // Source has Monaco's own Find; a preview's frame handles its own keys.
       if (k === "f" && !e.shiftKey && !e.altKey && findable) {
@@ -936,7 +951,7 @@ export default function App() {
       if (["s", "o", "w", "q", "n", "p", "\\"].includes(k)) e.preventDefault();
       else return;
       if (k === "n") void newFile();
-      if (k === "p") setQuick(true);
+      if (k === "p") setQuick("names");
       if (k === "s") { if (e.shiftKey) void copy(false); else void save(); }
       if (k === "o") void api.choose(e.shiftKey).catch(report);
       if (k === "w" && doc) void close(doc);
@@ -1013,7 +1028,10 @@ export default function App() {
             <div className="file-actions" onClick={() => actionsRef.current?.removeAttribute("open")}>
               <button onClick={() => void newFile()}>New File… <kbd>⌘N</kbd></button>
               <button disabled={!doc} onClick={() => void copy(false)}>Save As… <kbd>⇧⌘S</kbd></button>
-              <button onClick={() => setQuick(true)}>Quick Open… <kbd>⌘P</kbd></button>
+              <button onClick={() => setQuick("names")}>Quick Open… <kbd>⌘P</kbd></button>
+              <button onClick={() => setQuick("contents")}>Search in Files…</button>
+              <button disabled={!doc || !!serverUrl} onClick={() => setTool("compare")}>Compare with Commit…</button>
+              <button disabled={!doc || !!serverUrl} onClick={() => setTool("links")}>Check Links…</button>
               <button onClick={() => void api.choose(true).catch(report)}>Open Folder… <kbd>⇧⌘O</kbd></button>
               <button onClick={() => setSessionDialog(true)}>Session & Recovery…</button>
               <button disabled={checkingUpdate} onClick={() => void checkUpdates(true)}>Check for Updates…</button>
@@ -1261,6 +1279,7 @@ export default function App() {
                 changes={changeSet.changes}
                 index={changeNav.index}
                 source={scope ? "request" : doc.reviewFrom}
+                label={doc.reviewLabel}
                 onShowAll={scope && doc.review && doc.review.text !== scope.before.text ? () => setRequestScope(undefined) : undefined}
                 unmapped={changesUnmapped && doc.format === "markdown" && mode === "rendered"}
                 canUndo={reverted?.path === doc.path && reverted.after === doc.text}
@@ -1268,7 +1287,7 @@ export default function App() {
                 onRevert={revertCurrent}
                 onUndo={() => { if (reverted) { documents.edit(doc.path, reverted.before); setReverted(undefined); } }}
                 onCompare={() => setCompare({ path: doc.path, kind: "review", disk: reviewBase })}
-                onDone={() => { setReverted(undefined); setRequestScope(undefined); documents.update(doc.path, { review: undefined, reviewFrom: undefined }); }}
+                onDone={() => { setReverted(undefined); setRequestScope(undefined); documents.update(doc.path, { review: undefined, reviewFrom: undefined, reviewLabel: undefined }); }}
               />}
               {find.open && findable && <FindBar query={find.query} count={findCount} index={find.index} focus={find.focus}
                 onQuery={query => setFind(old => ({ ...old, query, index: 0, nonce: old.nonce + 1 }))}
@@ -1282,12 +1301,12 @@ export default function App() {
               {comparison ? (
                 <>
                   <div className="comparison-help">
-                    <span>{comparison.kind === "conflict" ? "Edit your draft or use a change arrow to take disk text. Save Merged checks the disk again before writing." : `${scope ? "The version when you sent this request" : doc.reviewFrom === "commit" ? "The last commit" : "The version you last reviewed"} and your current text. Both panes are read only.`}</span>
+                    <span>{comparison.kind === "conflict" ? "Edit your draft or use a change arrow to take disk text. Save Merged checks the disk again before writing." : `${scope ? "The version when you sent this request" : doc.reviewFrom === "commit" ? doc.reviewLabel ?? "The last commit" : "The version you last reviewed"} and your current text. Both panes are read only.`}</span>
                     {comparison.kind === "conflict" && doc.pending?.snapshot && doc.pending.snapshot.hash !== comparison.disk.hash && <button onClick={() => setCompare({ ...comparison, disk: doc.pending!.snapshot! })}>Refresh disk pane</button>}
                     {(!doc.pending || comparison.kind === "review") && <button onClick={() => setCompare(null)}>Back to draft</button>}
                   </div>
                   <div className="compare-labels">
-                    <span>{comparison.kind === "review" ? (scope ? "When the request was sent" : doc.reviewFrom === "commit" ? "Last commit" : "Last reviewed version") : doc.pending?.error ? "Last available disk version" : "Reviewed disk version"} · read only</span>
+                    <span>{comparison.kind === "review" ? (scope ? "When the request was sent" : doc.reviewFrom === "commit" ? doc.reviewLabel ?? "Last commit" : "Last reviewed version") : doc.pending?.error ? "Last available disk version" : "Reviewed disk version"} · read only</span>
                     <span>{comparison.kind === "review" ? "Current text · read only" : "Your draft · editable"}</span>
                   </div>
                   <Suspense
@@ -1528,6 +1547,7 @@ export default function App() {
         onClose={dismissFeedback}
       />}
       <ReviewPanel store={reviews} open={reviewOpen && !locked} onClose={() => setReviewOpen(false)} isStale={isFeedbackStale}
+        onExport={(notes) => void exportNotes(notes)}
         onOpenChange={(id, path) => void openFromRequest(id, path).catch(report)}
         confirm={async (title, detail) => (await ask(title, detail, ['Cancel', 'Remove'])) === 'Remove'}
         onReveal={revealFeedback} onEdit={note => {
@@ -1537,7 +1557,18 @@ export default function App() {
           setFeedbackAnchor(undefined); setReviewOpen(false); setFeedbackOpen(true);
         }} />
       {selection && !feedbackOpen && !reviewOpen && !prompt && <SelectionActions selection={selection} onAction={intent => openFeedback(selection, intent)} />}
-      {quick && <QuickOpen workspace={workspace} open={open} close={() => setQuick(false)} />}
+      {quick && <QuickOpen workspace={workspace} open={open} initialContents={quick === "contents"} close={() => setQuick(false)}
+        find={async (path, text) => { await open(path); pointTo(path, { text }); }} />}
+      {tool === "compare" && doc && <CompareDialog doc={doc} close={() => setTool(undefined)} compare={async (revision) => {
+        const committed = await api.gitCommitted(doc.path, revision);
+        if (!committed) throw new Error(`${name(doc.path)} is not in ${revision}.`);
+        if (committed.text === documents.get(doc.path)?.text) throw new Error(`No changes since ${revision}.`);
+        if (!documents.compareWithCommit(doc.path, committed, revision)) throw new Error("This document changed. Try again.");
+        setCompare(null);
+        goToChange(0);
+      }} />}
+      {tool === "links" && doc && <LinkCheckDialog doc={doc} close={() => setTool(undefined)}
+        go={(problem) => pointTo(doc.path, { text: doc.mode === "source" ? problem.reference : problem.label || problem.reference })} />}
       {sessionDialog && <SessionDialog status={recovery} startup={!initialized} restore={restore}
         change={changeRecovery} close={() => setSessionDialog(false)} quit={api.quit} />}
       {prompt && (

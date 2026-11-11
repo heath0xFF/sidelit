@@ -17,6 +17,7 @@ import { blocksFit, type ChangeSet } from "./changes";
 import { claimJump, type Jump } from "./jump";
 import { displayMath, findInlineMath, mathSources, MAX_MATH_PER_DOCUMENT, MAX_MATH_SOURCE } from "./math";
 import { findInDocument } from "./find";
+import { addsUnsafeLink } from "./links";
 import "@milkdown/crepe/theme/common/style.css";
 import "@milkdown/crepe/theme/frame.css";
 
@@ -183,18 +184,10 @@ export default function Rich({
       $prose(
         (ctx) =>
           new Plugin({
+            // Disk content may already hold such links, as at load; refusing it would leave
+            // the editor showing stale text that the next edit writes back over the file.
             filterTransaction(tr) {
-              if (!tr.docChanged) return true;
-              let safe = true;
-              tr.doc.descendants((node) => {
-                for (const mark of node.marks)
-                  if (
-                    mark.type.name === "link" &&
-                    /^\s*(?:javascript|data|vbscript):/i.test(mark.attrs.href)
-                  )
-                    safe = false;
-              });
-              return safe;
+              return !tr.docChanged || changing.current || !addsUnsafeLink(tr.before, tr.doc);
             },
             view: (initial) => {
               // Returning to the loaded document must restore its original Markdown bytes.

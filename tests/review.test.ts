@@ -119,3 +119,23 @@ describe('review notes', () => {
     expect(store.snapshot().record.notes).toHaveLength(2);
   });
 });
+
+describe('exported review notes', () => {
+  it('writes a readable Markdown summary without changing the notes', async () => {
+    const { notesMarkdown } = await import('../src/review');
+    const notes = [
+      { id: 'a', source: 'sidelit' as const, projectRoot: '/p', intent: 'review' as const, document: { path: '/p/docs/a.md', format: 'markdown' as const, unsaved: true }, selection: { type: 'text' as const, text: 'First line\nSecond line' }, instruction: 'Is this right?' },
+      { id: 'b', source: 'sidelit' as const, projectRoot: '/p', document: { path: '/p/b.html', format: 'html' as const }, selection: { type: 'element' as const, text: '', selector: 'nav.top' }, instruction: '' },
+    ];
+    const before = JSON.stringify(notes);
+    const text = notesMarkdown(notes, new Date('2026-11-10T12:00:00Z'));
+    expect(text).toContain('Exported from Sidelit on 2026-11-10 · 2 notes');
+    expect(text).toContain('## 1. Review · a.md');
+    expect(text).toContain('> First line\n> Second line');
+    expect(text).toContain('(from an unsaved draft)');
+    expect(text).toContain('## 2. Edit · b.html');
+    expect(text).toContain('Element `nav.top`');
+    expect(text).toContain('_No additional instruction_');
+    expect(JSON.stringify(notes)).toBe(before);
+  });
+});

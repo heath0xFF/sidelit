@@ -1,5 +1,12 @@
 # Verification
 
+## v0.9.0 search in files, link checks, any-commit comparisons, copy as prompt
+
+- `pnpm check` and `pnpm test` pass (262 tests). New tests cover the unsafe-link filter (a document that already holds a `javascript:` link stays editable; adding a new one is refused), link extraction and problem reporting, Markdown note export, copied prompts matching `extensions/pi-sidelit/protocol.ts` byte for byte, and Copy selected as prompt sending nothing.
+- Rust format, clippy with `-D warnings`, and tests pass (43). New tests cover content search bounds, case folding mapped back to the original text, folder-scoped Git status (including a folder named like a pattern and a sibling sharing its prefix), revision comparisons that reject option-like input, link targets that never report on paths outside the grants (checked before touching the disk and again after resolving symlinks), and suggested export names.
+- Rust checks ran on Linux in a container with the Tauri GTK/WebKit libraries, not on macOS. CI and the release workflow run them on macOS.
+- Not checked in this pass: packaged `desktop-test` smoke runs, native dialogs (Save for Export, folder watch-limit reporting), clipboard behavior in packaged WKWebView, and the look of the new dialogs. These need a Mac.
+
 ## v0.8.0 session-only request history
 
 - `pnpm check` and `pnpm test` pass (254 tests). New tests cover fresh selection requests, unsent-draft protection, frozen retries, lost receipts, background tracking, cached reports, document/page filtering, and bounded history.

@@ -64,3 +64,22 @@ describe('review list controls', () => {
     expect(document.body.textContent).toContain('Add to review');
   });
 });
+
+describe('review list without Pi', () => {
+  it('copies the selected notes as the same prompt Pi would get, without sending', async () => {
+    const { send } = await fixture();
+    const writeText = vi.fn(async () => {});
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    expect(button('Copy selected as prompt').disabled).toBe(true);
+    await selectNote();
+    await act(async () => button('Copy selected as prompt').click());
+    expect(writeText).toHaveBeenCalledTimes(1);
+    const copied = (writeText.mock.calls[0] as unknown as string[])[0];
+    expect(copied).toContain('Review batch: 1 notes');
+    expect(copied).toContain('Quote one');
+    expect(copied).not.toContain('Quote two');
+    expect(send).not.toHaveBeenCalled();
+    expect(document.body.textContent).toContain('cannot see whether it was sent');
+    expect(document.querySelectorAll('.review-list li')[0].textContent).toContain('Unsent');
+  });
+});

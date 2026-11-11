@@ -49,6 +49,15 @@ fn changed_documents(root: &Path) -> GitStatus {
         .include_untracked(true)
         .recurse_untracked_dirs(true)
         .exclude_submodules(true);
+    // Discovery walks up, so the folder may sit inside a much larger worktree (say a
+    // dotfiles repository at home). Scan only the folder, matched literally, not as a pattern.
+    if let Some(scope) = root
+        .strip_prefix(&base)
+        .ok()
+        .filter(|p| !p.as_os_str().is_empty())
+    {
+        options.pathspec(scope).disable_pathspec_match(true);
+    }
     let Ok(statuses) = repository.statuses(Some(&mut options)) else {
         return GitStatus::default();
     };
@@ -70,23 +79,83 @@ fn changed_documents(root: &Path) -> GitStatus {
     result
 }
 
-fn committed_text(path: &Path) -> Option<Snapshot> {
-    let repository = Repository::discover(path.parent()?).ok()?;
-    let relative = path.strip_prefix(workdir(&repository)?).ok()?;
-    let tree = repository.head().ok()?.peel_to_tree().ok()?;
+const MAX_REVISION_BYTES: usize = 200;
+const MAX_REFS: usize = 100;
+
+// Only revision syntax: a leading '-' or spaces could never name a commit here.
+fn valid_revision(revision: &str) -> bool {
+    !revision.is_empty()
+        && revision.len() <= MAX_REVISION_BYTES
+        && !revision.starts_with('-')
+        && revision
+            .chars()
+            .all(|c| c.is_alphanumeric() || "-_./~^@{}:+".contains(c))
+}
+
+fn committed_text(path: &Path, revision: Option<&str>) -> Result<Option<Snapshot>> {
+    let found = (|| {
+        let repository = Repository::discover(path.parent()?).ok()?;
+        Some((workdir(&repository)?, repository))
+    })();
+    let Some((base, repository)) = found else {
+        return match revision {
+            Some(_) => Err("This document is not in a Git repository".into()),
+            None => Ok(None),
+        };
+    };
+    let Ok(relative) = path.strip_prefix(base) else {
+        return Ok(None);
+    };
+    let tree = match revision {
+        None => match repository.head().and_then(|head| head.peel_to_tree()) {
+            Ok(tree) => tree,
+            Err(_) => return Ok(None),
+        },
+        Some(revision) => {
+            if !valid_revision(revision) {
+                return Err("Enter a branch, tag, or commit, such as main or HEAD~1".into());
+            }
+            repository
+                .revparse_single(revision)
+                .and_then(|object| object.peel_to_tree())
+                .map_err(|_| format!("No commit, branch, or tag named {revision}"))?
+        }
+    };
     let blob = tree
         .get_path(relative)
-        .ok()?
-        .to_object(&repository)
-        .ok()?
-        .peel_to_blob()
-        .ok()?;
+        .ok()
+        .and_then(|entry| entry.to_object(&repository).ok())
+        .and_then(|object| object.peel_to_blob().ok());
+    let Some(blob) = blob else {
+        return Ok(None);
+    };
     if blob.size() > MAX_BLOB_BYTES {
-        return None;
+        return Err("That version is larger than 16 MiB".into());
     }
-    Some(files::text_snapshot(
-        std::str::from_utf8(blob.content()).ok()?,
-    ))
+    match std::str::from_utf8(blob.content()) {
+        Ok(text) => Ok(Some(files::text_snapshot(text))),
+        Err(_) => Err("That version is not UTF-8 text".into()),
+    }
+}
+
+// Branch and tag names to suggest; newest commits first is not needed for a short list.
+fn reference_names(path: &Path) -> Vec<String> {
+    let Some(repository) = path.parent().and_then(|p| Repository::discover(p).ok()) else {
+        return Vec::new();
+    };
+    let Ok(references) = repository.references() else {
+        return Vec::new();
+    };
+    let mut names: Vec<String> = references
+        .flatten()
+        .filter(|r| r.is_branch() || r.is_remote() || r.is_tag())
+        .filter_map(|r| r.shorthand().ok().map(str::to_string))
+        .filter(|name| valid_revision(name) && !name.ends_with("/HEAD"))
+        .take(MAX_REFS)
+        .collect();
+    names.sort();
+    names.dedup();
+    names
 }
 
 #[command]
@@ -98,9 +167,21 @@ pub async fn git_status(state: State<'_, Service>, path: PathBuf) -> Result<GitS
 }
 
 #[command]
-pub async fn git_committed(state: State<'_, Service>, path: PathBuf) -> Result<Option<Snapshot>> {
+pub async fn git_committed(
+    state: State<'_, Service>,
+    path: PathBuf,
+    revision: Option<String>,
+) -> Result<Option<Snapshot>> {
     let document = state.document(&path)?;
-    tauri::async_runtime::spawn_blocking(move || committed_text(&document))
+    tauri::async_runtime::spawn_blocking(move || committed_text(&document, revision.as_deref()))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[command]
+pub async fn git_references(state: State<'_, Service>, path: PathBuf) -> Result<Vec<String>> {
+    let document = state.document(&path)?;
+    tauri::async_runtime::spawn_blocking(move || reference_names(&document))
         .await
         .map_err(|e| e.to_string())
 }
@@ -154,8 +235,74 @@ mod tests {
                 },
             ]
         );
-        assert_eq!(committed_text(&docs.join("a.md")).unwrap().text, "old\n");
-        assert!(committed_text(&docs.join("new.mdx")).is_none());
+        assert_eq!(
+            committed_text(&docs.join("a.md"), None)
+                .unwrap()
+                .unwrap()
+                .text,
+            "old\n"
+        );
+        assert!(committed_text(&docs.join("new.mdx"), None)
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn compares_with_a_named_revision_and_rejects_option_like_input() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = files::canonical(dir.path()).unwrap();
+        let repository = Repository::init(&root).unwrap();
+        let path = root.join("a.md");
+        fs::write(&path, "first\n").unwrap();
+        commit_all(&repository);
+        let first = repository.head().unwrap().peel_to_commit().unwrap();
+        fs::write(&path, "second\n").unwrap();
+        let mut index = repository.index().unwrap();
+        index.add_path(Path::new("a.md")).unwrap();
+        index.write().unwrap();
+        let tree = repository.find_tree(index.write_tree().unwrap()).unwrap();
+        let author = git2::Signature::now("Test", "test@example.com").unwrap();
+        repository
+            .commit(Some("HEAD"), &author, &author, "second", &tree, &[&first])
+            .unwrap();
+        repository
+            .tag_lightweight("v1", first.as_object(), false)
+            .unwrap();
+        fs::write(&path, "draft\n").unwrap();
+        let text = |revision| committed_text(&path, revision).unwrap().unwrap().text;
+        assert_eq!(text(None), "second\n");
+        assert_eq!(text(Some("HEAD~1")), "first\n");
+        assert_eq!(text(Some("v1")), "first\n");
+        assert!(committed_text(&path, Some("missing")).is_err());
+        assert!(committed_text(&path, Some("--output=x")).is_err());
+        assert!(committed_text(&path, Some("a b")).is_err());
+        assert!(reference_names(&path).contains(&"v1".to_string()));
+        let other = root.join("new.md");
+        fs::write(&other, "new\n").unwrap();
+        assert!(committed_text(&other, Some("HEAD")).unwrap().is_none());
+    }
+
+    #[test]
+    fn status_is_scoped_to_a_folder_named_like_a_pattern() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = files::canonical(dir.path()).unwrap();
+        Repository::init(&root).unwrap();
+        let scoped = root.join("notes [draft]*");
+        fs::create_dir(&scoped).unwrap();
+        fs::create_dir(root.join("notes d")).unwrap();
+        fs::write(scoped.join("a.md"), "a\n").unwrap();
+        fs::write(root.join("notes d/b.md"), "b\n").unwrap();
+        fs::create_dir(root.join("notes [draft]*x")).unwrap();
+        fs::write(root.join("notes [draft]*x/b.md"), "b\n").unwrap();
+        fs::write(root.join("top.md"), "c\n").unwrap();
+        let found = changed_documents(&scoped).files;
+        assert_eq!(
+            found,
+            [GitFile {
+                path: scoped.join("a.md"),
+                status: "added"
+            }]
+        );
     }
 
     #[test]

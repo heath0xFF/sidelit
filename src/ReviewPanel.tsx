@@ -3,13 +3,15 @@ import { api, type AgentTarget } from './api';
 import { selectionSummary, type FeedbackMessage } from './inspection';
 import { batchMessage, type ReviewNotes } from './review';
 import RequestChanges from './RequestChanges';
+import { copyText, promptFor } from './prompt';
 
-export default function ReviewPanel({ store, open, onClose, onEdit, onReveal, isStale, confirm, onOpenChange }: {
+export default function ReviewPanel({ store, open, onClose, onEdit, onReveal, isStale, confirm, onOpenChange, onExport }: {
   store: ReviewNotes; open: boolean; onClose: () => void;
   onEdit: (note: FeedbackMessage) => void; onReveal: (note: FeedbackMessage) => void;
   isStale: (note: FeedbackMessage) => boolean;
   confirm: (title: string, detail: string) => Promise<boolean>;
   onOpenChange?: (id: string, path: string) => void;
+  onExport?: (notes: FeedbackMessage[]) => void;
 }) {
   const { record, ready, busy, error } = useSyncExternalStore(store.subscribe, store.snapshot);
   const [selected, setSelected] = useState<string[]>([]);
@@ -19,6 +21,7 @@ export default function ReviewPanel({ store, open, onClose, onEdit, onReveal, is
   const [targetError, setTargetError] = useState('');
   const [refresh, setRefresh] = useState(0);
   const [acknowledged, setAcknowledged] = useState(false);
+  const [copied, setCopied] = useState('');
   const heading = useRef<HTMLHeadingElement>(null);
   const { attempt } = record;
   const chosen = useMemo(() => record.notes.filter(note => (attempt ? attempt.message.notes.map(n => n.id) : selected).includes(note.id)), [record.notes, attempt, selected]);
@@ -57,6 +60,12 @@ export default function ReviewPanel({ store, open, onClose, onEdit, onReveal, is
     if (!prepared.message || !target?.connected || busy || (stale && !acknowledged)) return;
     void store.send(attempt?.target ?? targetId, prepared.message, () => acknowledged || !chosen.some(isStale)).catch(() => {});
   };
+  const copyPrompt = async () => {
+    if (!prepared.message) return;
+    try { await copyText(promptFor(prepared.message)); setCopied('Copied. Paste it into any agent. Sidelit cannot see whether it was sent.'); }
+    catch (error) { setCopied(String(error)); }
+  };
+  useEffect(() => { setCopied(''); }, [prepared.message]);
   const clearAttempt = async () => {
     if (await confirm('Remove attempted notes?', 'This removes these notes and their local delivery record. It does not cancel work already received by Pi. An uncertain delivery may already be queued.')) {
       await store.clearAttempt(); setSelected([]);
@@ -115,6 +124,11 @@ export default function ReviewPanel({ store, open, onClose, onEdit, onReveal, is
       </div>}
       {(error || targetError) && <p className="feedback-status error" role="alert">{error || targetError}</p>}
       {!loading && ready && !targets.some(target => target.connected) && <p className="feedback-status">No connected Pi session. Run <code>sidelit doctor --project .</code> for setup steps. Batch delivery needs the updated Sidelit Pi extension.</p>}
+      <div className="review-extra-actions">
+        <button disabled={!prepared.message} onClick={() => void copyPrompt()} title="Copy the selected notes as one prompt for Claude Code, Codex, or another agent">Copy selected as prompt</button>
+        {onExport && <button disabled={!ready || !record.notes.length} onClick={() => onExport(chosen.length ? chosen : record.notes)} title="Save a Markdown copy of these notes as a new file">{chosen.length ? 'Export selected…' : 'Export all…'}</button>}
+      </div>
+      {copied && <p className="feedback-status" role="status">{copied}</p>}
       {(!ready || record.notes.length > 0) && <button className="review-clear" disabled={busy} onClick={() => void clear().catch(() => {})}>Delete all saved notes</button>}
     </div>
   </section>;
