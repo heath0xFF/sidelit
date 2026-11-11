@@ -1,0 +1,19 @@
+ok so yesterday we dove into some bugs and then put together the realease. what other suggestions do you do have for thi?
+
+---
+
+ok so yesterday we dove into some bugs and then put together the realease. what other suggestions do you do have for thi?
+
+---
+
+ok yeah let's do those things. i would like to investigate sending to any agent, but this may need to be developed on zaphod instead of arthur so that i can test it. unless you think otherwise. 
+
+and yeah agree on dropping the real browser renderer
+
+---
+
+ok commit and tag a release!
+
+---
+
+why can't arthur build the app at all?? we should rectify that.
